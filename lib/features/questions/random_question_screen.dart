@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -42,7 +44,6 @@ class _RandomQuestionScreenState extends ConsumerState<RandomQuestionScreen> {
   int _currentIndex = 0;
   int? _selectedChoice;
   bool _isAnswered = false;
-  bool _isSavingAnswer = false;
   int _correctCount = 0;
   bool _isSavingBookmark = false;
   Map<String, QuestionLearningStatus> _statuses =
@@ -235,10 +236,8 @@ class _RandomQuestionScreenState extends ConsumerState<RandomQuestionScreen> {
                     style: Theme.of(context).textTheme.bodySmall,
                   ),
                 ],
-                if (_statusFor(question).answerCount > 0) ...[
-                  const SizedBox(height: 6),
-                  _LearningHistorySummary(status: _statusFor(question)),
-                ],
+                const SizedBox(height: 6),
+                _LearningHistorySummary(status: _statusFor(question)),
                 const SizedBox(height: 14),
                 Card(
                   margin: EdgeInsets.zero,
@@ -340,9 +339,7 @@ class _RandomQuestionScreenState extends ConsumerState<RandomQuestionScreen> {
               child: SizedBox(
                 width: double.infinity,
                 child: FilledButton(
-                  onPressed: _isSavingAnswer
-                      ? null
-                      : () => _goToNextQuestion(questions),
+                  onPressed: () => _goToNextQuestion(questions),
                   child: Text(
                     _currentIndex == questions.length - 1
                         ? '結果を見る'
@@ -421,57 +418,68 @@ class _RandomQuestionScreenState extends ConsumerState<RandomQuestionScreen> {
     );
   }
 
-  Future<void> _answerQuestion({
+  void _answerQuestion({
     required Question question,
     required int selectedChoice,
-  }) async {
-    if (_isAnswered || _isSavingAnswer) return;
+  }) {
+    if (_isAnswered) return;
 
     final isCorrect = question.isCorrectChoice(selectedChoice);
+    final previous = _statusFor(question);
+    final answeredAt = DateTime.now();
+    final answeredIndex = _currentIndex;
+
+    // 正誤表示と学習履歴は先に更新し、DB保存を待たせない。
     setState(() {
       _selectedChoice = selectedChoice;
       _isAnswered = true;
-      _isSavingAnswer = true;
       if (isCorrect) _correctCount++;
+      _statuses = <String, QuestionLearningStatus>{
+        ..._statuses,
+        question.questionCode: previous.copyWith(
+          correctCount: previous.correctCount + (isCorrect ? 1 : 0),
+          wrongCount: previous.wrongCount + (isCorrect ? 0 : 1),
+          lastResult: isCorrect,
+          lastSelectedChoice: selectedChoice,
+          lastAnswered: answeredAt,
+        ),
+      };
     });
 
+    unawaited(
+      _persistAnswer(
+        question: question,
+        selectedChoice: selectedChoice,
+        answeredIndex: answeredIndex,
+      ),
+    );
+  }
+
+  Future<void> _persistAnswer({
+    required Question question,
+    required int selectedChoice,
+    required int answeredIndex,
+  }) async {
     try {
-      await ref.read(questionRepositoryProvider).recordAnswer(
-            qualification: widget.qualification,
-            question: question,
-            selectedChoice: selectedChoice,
-          );
+      final repository = ref.read(questionRepositoryProvider);
       final questions = await _questionsFuture;
-      if (_currentIndex >= questions.length - 1) {
-        await _clearProgress();
-      } else {
-        await _saveProgress(questions, nextIndex: _currentIndex + 1);
-      }
-      final previous = _statusFor(question);
-      if (mounted) {
-        setState(() {
-          _statuses = <String, QuestionLearningStatus>{
-            ..._statuses,
-            question.questionCode: previous.copyWith(
-              correctCount:
-                  previous.correctCount + (isCorrect ? 1 : 0),
-              wrongCount: previous.wrongCount + (isCorrect ? 0 : 1),
-              lastResult: isCorrect,
-              lastSelectedChoice: selectedChoice,
-              lastAnswered: DateTime.now(),
-            ),
-          };
-        });
-      }
+
+      await Future.wait<void>([
+        repository.recordAnswer(
+          qualification: widget.qualification,
+          question: question,
+          selectedChoice: selectedChoice,
+        ),
+        if (answeredIndex >= questions.length - 1)
+          _clearProgress()
+        else
+          _saveProgress(questions, nextIndex: answeredIndex + 1),
+      ]);
     } catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('回答結果を保存できませんでした: $error')),
       );
-    } finally {
-      if (mounted) {
-        setState(() => _isSavingAnswer = false);
-      }
     }
   }
 
@@ -484,9 +492,19 @@ class _RandomQuestionScreenState extends ConsumerState<RandomQuestionScreen> {
       _currentIndex++;
       _selectedChoice = null;
       _isAnswered = false;
-      _isSavingAnswer = false;
     });
     _scrollToTop();
+    _precacheNextQuestionImage(questions);
+  }
+
+  void _precacheNextQuestionImage(List<Question> questions) {
+    final nextIndex = _currentIndex + 1;
+    if (nextIndex >= questions.length) return;
+
+    final imagePath = questions[nextIndex].imagePath?.trim();
+    if (imagePath == null || imagePath.isEmpty) return;
+
+    unawaited(precacheImage(AssetImage(imagePath), context));
   }
 
   void _scrollToTop() {
@@ -552,7 +570,6 @@ class _RandomQuestionScreenState extends ConsumerState<RandomQuestionScreen> {
       _currentIndex = 0;
       _selectedChoice = null;
       _isAnswered = false;
-      _isSavingAnswer = false;
       _correctCount = 0;
       _statuses = const <String, QuestionLearningStatus>{};
       _questionsFuture = _loadQuestions();
@@ -621,19 +638,19 @@ class _LearningHistorySummary extends StatelessWidget {
       runSpacing: 4,
       children: [
         Text(
-          '過去 ${status.answerCount}回',
+          status.answerCount == 0 ? '過去 －' : '過去 ${status.answerCount}回',
           style: Theme.of(context).textTheme.bodySmall,
         ),
         Text(
-          '正解 ${status.correctCount}',
+          status.answerCount == 0 ? '正解 －' : '正解 ${status.correctCount}',
           style: Theme.of(context).textTheme.bodySmall,
         ),
         Text(
-          '不正解 ${status.wrongCount}',
+          status.answerCount == 0 ? '不正解 －' : '不正解 ${status.wrongCount}',
           style: Theme.of(context).textTheme.bodySmall,
         ),
         Text(
-          '正答率 ${status.correctRate}%',
+          status.answerCount == 0 ? '正答率 －' : '正答率 ${status.correctRate}%',
           style: Theme.of(context).textTheme.bodySmall,
         ),
       ],
