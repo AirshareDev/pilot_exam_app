@@ -200,6 +200,156 @@ class _MockExamScreenState extends ConsumerState<MockExamScreen> {
         questions[_currentIndex + 1].subjectId;
   }
 
+  Future<void> _showQuestionList() async {
+    final questions = _questions ?? const <Question>[];
+    if (questions.isEmpty) return;
+
+    final selectedIndex = await showModalBottomSheet<int>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      builder: (context) {
+        final colorScheme = Theme.of(context).colorScheme;
+
+        Widget buildNumberButton(int index) {
+          final isCurrent = index == _currentIndex;
+          final isAnswered = _answers.containsKey(index);
+
+          final backgroundColor = isCurrent
+              ? colorScheme.primary
+              : isAnswered
+                  ? colorScheme.primaryContainer
+                  : colorScheme.surface;
+          final foregroundColor = isCurrent
+              ? colorScheme.onPrimary
+              : isAnswered
+                  ? colorScheme.onPrimaryContainer
+                  : colorScheme.onSurface;
+          final borderColor = isCurrent
+              ? colorScheme.primary
+              : isAnswered
+                  ? colorScheme.primary
+                  : colorScheme.outlineVariant;
+
+          return InkWell(
+            onTap: () => Navigator.of(context).pop(index),
+            borderRadius: BorderRadius.circular(8),
+            child: Container(
+              width: 44,
+              height: 44,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: backgroundColor,
+                border: Border.all(
+                  color: borderColor,
+                  width: isCurrent ? 2 : 1,
+                ),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Text(
+                '${index + 1}',
+                style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                      color: foregroundColor,
+                      fontWeight:
+                          isCurrent ? FontWeight.bold : FontWeight.normal,
+                    ),
+              ),
+            ),
+          );
+        }
+
+        final subjectGroups = <Widget>[];
+        for (final subject in _subjects) {
+          final indexes = <int>[];
+          for (var i = 0; i < questions.length; i++) {
+            if (questions[i].subjectId == subject.id) indexes.add(i);
+          }
+          if (indexes.isEmpty) continue;
+
+          subjectGroups.addAll([
+            Text(
+              subject.name,
+              style: Theme.of(context).textTheme.titleMedium,
+            ),
+            const SizedBox(height: 10),
+            Wrap(
+              spacing: 10,
+              runSpacing: 10,
+              children: [for (final index in indexes) buildNumberButton(index)],
+            ),
+            const SizedBox(height: 22),
+          ]);
+        }
+
+        return DraggableScrollableSheet(
+          expand: false,
+          initialChildSize: 0.72,
+          minChildSize: 0.42,
+          maxChildSize: 0.92,
+          builder: (context, scrollController) => Column(
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 16, 12, 8),
+                child: Row(
+                  children: [
+                    Text(
+                      '問題一覧',
+                      style: Theme.of(context).textTheme.titleLarge,
+                    ),
+                    const Spacer(),
+                    IconButton(
+                      tooltip: '閉じる',
+                      onPressed: () => Navigator.of(context).pop(),
+                      icon: const Icon(Icons.close),
+                    ),
+                  ],
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                child: Row(
+                  children: [
+                    _QuestionListLegend(
+                      color: colorScheme.surface,
+                      borderColor: colorScheme.outlineVariant,
+                      label: '未回答',
+                    ),
+                    const SizedBox(width: 16),
+                    _QuestionListLegend(
+                      color: colorScheme.primaryContainer,
+                      borderColor: colorScheme.primary,
+                      label: '回答済み',
+                    ),
+                    const SizedBox(width: 16),
+                    _QuestionListLegend(
+                      color: colorScheme.primary,
+                      borderColor: colorScheme.primary,
+                      label: '現在',
+                    ),
+                  ],
+                ),
+              ),
+              const Divider(height: 24),
+              Expanded(
+                child: ListView(
+                  controller: scrollController,
+                  padding: const EdgeInsets.fromLTRB(20, 4, 20, 24),
+                  children: subjectGroups,
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+
+    if (selectedIndex == null || !mounted) return;
+    setState(() {
+      _currentIndex = selectedIndex;
+      _stage = _MockExamStage.answering;
+    });
+  }
+
   Future<void> _submit({bool force = false}) async {
     if (_submitting) return;
     final questions = _questions;
@@ -603,7 +753,15 @@ class _MockExamScreenState extends ConsumerState<MockExamScreen> {
                     child: const Text('前へ'),
                   ),
                 ),
-                const SizedBox(width: 12),
+                const SizedBox(width: 10),
+                SizedBox(
+                  width: 88,
+                  child: OutlinedButton(
+                    onPressed: _submitting ? null : _showQuestionList,
+                    child: const Text('一覧'),
+                  ),
+                ),
+                const SizedBox(width: 10),
                 Expanded(
                   child: _currentIndex == questions.length - 1
                       ? FilledButton(
@@ -633,6 +791,38 @@ class _MockExamScreenState extends ConsumerState<MockExamScreen> {
             ),
           ),
         ),
+      ],
+    );
+  }
+}
+
+class _QuestionListLegend extends StatelessWidget {
+  const _QuestionListLegend({
+    required this.color,
+    required this.borderColor,
+    required this.label,
+  });
+
+  final Color color;
+  final Color borderColor;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 14,
+          height: 14,
+          decoration: BoxDecoration(
+            color: color,
+            border: Border.all(color: borderColor),
+            borderRadius: BorderRadius.circular(3),
+          ),
+        ),
+        const SizedBox(width: 5),
+        Text(label, style: Theme.of(context).textTheme.bodySmall),
       ],
     );
   }
