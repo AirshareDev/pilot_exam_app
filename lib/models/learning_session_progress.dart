@@ -16,6 +16,7 @@ class LearningSessionProgress {
     this.examSessionId,
     this.examSessionName,
     this.bookmarkedOnly = false,
+    this.answers = const <int, int>{},
   });
 
   final int qualificationId;
@@ -31,6 +32,7 @@ class LearningSessionProgress {
   final int? examSessionId;
   final String? examSessionName;
   final bool bookmarkedOnly;
+  final Map<int, int> answers;
 
   int get totalQuestions => questionCodes.length;
 
@@ -38,6 +40,7 @@ class LearningSessionProgress {
       questionCodes.isNotEmpty && nextIndex >= 0 && nextIndex < totalQuestions;
 
   String get modeLabel {
+    if (mode == 'mockPractice') return '模擬試験・練習モード';
     if (bookmarkedOnly) return 'ブックマーク';
     if (subjectName != null && subjectName!.isNotEmpty) return subjectName!;
     if (examSessionName != null && examSessionName!.isNotEmpty) {
@@ -62,6 +65,9 @@ class LearningSessionProgress {
         'examSessionId': examSessionId,
         'examSessionName': examSessionName,
         'bookmarkedOnly': bookmarkedOnly,
+        'answers': answers.map(
+          (index, choice) => MapEntry(index.toString(), choice),
+        ),
       };
 
   String toJson() => jsonEncode(toMap());
@@ -79,6 +85,17 @@ class LearningSessionProgress {
     final codes = codesValue is List
         ? codesValue.map((value) => value.toString()).toList(growable: false)
         : const <String>[];
+    final answersValue = map['answers'];
+    final answers = <int, int>{};
+    if (answersValue is Map) {
+      for (final entry in answersValue.entries) {
+        final index = int.tryParse(entry.key.toString());
+        final choice = _readNullableInt(entry.value);
+        if (index != null && choice != null) {
+          answers[index] = choice;
+        }
+      }
+    }
 
     return LearningSessionProgress(
       qualificationId: _readInt(map['qualificationId']),
@@ -95,6 +112,7 @@ class LearningSessionProgress {
       examSessionId: _readNullableInt(map['examSessionId']),
       examSessionName: _readNullableString(map['examSessionName']),
       bookmarkedOnly: map['bookmarkedOnly'] == true,
+      answers: answers,
     );
   }
 }

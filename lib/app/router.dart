@@ -105,6 +105,12 @@ final GoRouter appRouter = GoRouter(
             : null;
         if (arguments == null) return const _RouteErrorScreen();
         final progress = arguments.progress;
+        if (progress.mode == 'mockPractice') {
+          return MockExamScreen(
+            qualification: arguments.qualification,
+            resumeProgress: progress,
+          );
+        }
         return RandomQuestionScreen(
           qualification: arguments.qualification,
           subjectId: progress.subjectId,

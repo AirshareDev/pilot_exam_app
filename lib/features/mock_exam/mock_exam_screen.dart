@@ -6,8 +6,12 @@ import 'package:go_router/go_router.dart';
 
 import '../../database/questions_database.dart';
 import '../../database/user_database.dart';
+import '../../models/learning_session_progress.dart';
+import '../../models/qualification.dart';
 import '../../models/question.dart';
 import '../../models/subject.dart';
+import '../../repositories/question_repository.dart';
+import '../learning_progress/learning_session_progress_provider.dart';
 import '../qualifications/selected_qualification_provider.dart';
 import '../results/results_provider.dart';
 
@@ -26,7 +30,14 @@ class MockExamConfig {
 }
 
 class MockExamScreen extends ConsumerStatefulWidget {
-  const MockExamScreen({super.key});
+  const MockExamScreen({
+    this.qualification,
+    this.resumeProgress,
+    super.key,
+  });
+
+  final Qualification? qualification;
+  final LearningSessionProgress? resumeProgress;
 
   @override
   ConsumerState<MockExamScreen> createState() => _MockExamScreenState();
@@ -45,7 +56,92 @@ class _MockExamScreenState extends ConsumerState<MockExamScreen> {
   _MockExamStage _stage = _MockExamStage.modeSelection;
   bool _loading = false;
   bool _submitting = false;
+  bool _savingProgress = false;
+  bool _ownsSavedProgress = false;
   String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    final progress = widget.resumeProgress;
+    if (progress != null && progress.mode == 'mockPractice') {
+      _resumePractice(progress);
+    }
+  }
+
+  Future<Qualification?> _resolveQualification() async {
+    final supplied = widget.qualification;
+    if (supplied != null) return supplied;
+    return ref.read(selectedQualificationProvider.future);
+  }
+
+  Future<void> _resumePractice(LearningSessionProgress progress) async {
+    setState(() {
+      _mode = _MockExamMode.practice;
+      _stage = _MockExamStage.answering;
+      _loading = true;
+      _error = null;
+      _startedAt = progress.updatedAt;
+      _currentIndex = progress.nextIndex;
+      _answers
+        ..clear()
+        ..addAll(progress.answers);
+      _ownsSavedProgress = true;
+    });
+
+    try {
+      final qualification = await _resolveQualification();
+      if (qualification == null) {
+        throw StateError('資格が選択されていません。');
+      }
+      final database = ref.read(questionsDatabaseProvider);
+      final subjects = await database.loadSubjects(
+        databaseFileName: qualification.databaseFileName,
+      );
+      final repository = ref.read(questionRepositoryProvider);
+      final questions = await repository.loadQuestionsByCodes(
+        qualification: qualification,
+        questionCodes: progress.questionCodes,
+      );
+      if (questions.isEmpty) {
+        throw StateError('中断した模擬試験の問題を読み込めませんでした。');
+      }
+
+      final activeSubjectIds = questions
+          .map((question) => question.subjectId)
+          .whereType<int>()
+          .toSet();
+      final activeSubjects = subjects
+          .where((subject) => activeSubjectIds.contains(subject.id))
+          .toList(growable: false);
+      final counts = <int, int>{};
+      for (final question in questions) {
+        final subjectId = question.subjectId;
+        if (subjectId != null) {
+          counts[subjectId] = (counts[subjectId] ?? 0) + 1;
+        }
+      }
+
+      if (!mounted) return;
+      setState(() {
+        _subjects = activeSubjects;
+        _questions = questions;
+        _subjectQuestionCounts
+          ..clear()
+          ..addAll(counts);
+        if (_currentIndex < 0 || _currentIndex >= questions.length) {
+          _currentIndex = 0;
+        }
+        _loading = false;
+      });
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _error = error.toString();
+      });
+    }
+  }
 
   Future<void> _selectMode(_MockExamMode mode) async {
     _timer?.cancel();
@@ -74,7 +170,7 @@ class _MockExamScreenState extends ConsumerState<MockExamScreen> {
 
   Future<void> _loadSubjects() async {
     try {
-      final qualification = await ref.read(selectedQualificationProvider.future);
+      final qualification = await _resolveQualification();
       if (qualification == null) {
         if (!mounted) return;
         setState(() {
@@ -137,7 +233,7 @@ class _MockExamScreenState extends ConsumerState<MockExamScreen> {
     });
 
     try {
-      final qualification = await ref.read(selectedQualificationProvider.future);
+      final qualification = await _resolveQualification();
       if (qualification == null) {
         throw StateError('資格が選択されていません。');
       }
@@ -350,6 +446,72 @@ class _MockExamScreenState extends ConsumerState<MockExamScreen> {
     });
   }
 
+  Future<void> _interruptPractice() async {
+    if (_mode != _MockExamMode.practice || _savingProgress) return;
+    final questions = _questions ?? const <Question>[];
+    if (questions.isEmpty) return;
+
+    final shouldInterrupt = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('練習を中断しますか？'),
+        content: const Text(
+          '現在の問題、回答内容、出題順を保存します。ホームの「続きから学習」から再開できます。',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('戻る'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('中断する'),
+          ),
+        ],
+      ),
+    );
+    if (shouldInterrupt != true || !mounted) return;
+
+    setState(() => _savingProgress = true);
+    try {
+      final qualification = await _resolveQualification();
+      if (qualification == null) {
+        throw StateError('資格が選択されていません。');
+      }
+      final progress = LearningSessionProgress(
+        qualificationId: qualification.id,
+        qualificationCode: qualification.code,
+        qualificationName: qualification.name,
+        mode: 'mockPractice',
+        questionCodes: questions
+            .map((question) => question.questionCode)
+            .toList(growable: false),
+        nextIndex: _currentIndex,
+        correctCount: 0,
+        updatedAt: DateTime.now(),
+        answers: Map<int, int>.unmodifiable(_answers),
+      );
+      await ref.read(learningSessionProgressStoreProvider).save(progress);
+      _ownsSavedProgress = true;
+      ref.invalidate(learningSessionProgressProvider);
+      if (!mounted) return;
+      context.go('/');
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _savingProgress = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('中断データを保存できませんでした: $error')),
+      );
+    }
+  }
+
+  Future<void> _clearOwnedProgress() async {
+    if (!_ownsSavedProgress) return;
+    await ref.read(learningSessionProgressStoreProvider).clear();
+    ref.invalidate(learningSessionProgressProvider);
+    _ownsSavedProgress = false;
+  }
+
   Future<void> _submit({bool force = false}) async {
     if (_submitting) return;
     final questions = _questions;
@@ -382,7 +544,7 @@ class _MockExamScreenState extends ConsumerState<MockExamScreen> {
     _timer?.cancel();
 
     try {
-      final qualification = await ref.read(selectedQualificationProvider.future);
+      final qualification = await _resolveQualification();
       if (qualification == null) {
         throw StateError('資格が選択されていません。');
       }
@@ -411,6 +573,7 @@ class _MockExamScreenState extends ConsumerState<MockExamScreen> {
         passingScorePercent: 70,
       );
       ref.invalidate(learningResultsProvider);
+      await _clearOwnedProgress();
 
       if (!mounted) return;
       await Navigator.of(context).push<void>(
@@ -446,22 +609,27 @@ class _MockExamScreenState extends ConsumerState<MockExamScreen> {
                   ? '模擬試験・練習モード'
                   : '模擬試験',
         ),
-        actions: mode == _MockExamMode.exam &&
-                !_loading &&
+        actions: !_loading &&
                 (_stage == _MockExamStage.subjectIntro ||
                     _stage == _MockExamStage.answering)
             ? [
-                Padding(
-                  padding: const EdgeInsets.only(right: 16),
-                  child: Center(
-                    child: Text(
-                      _formatDuration(_remaining),
-                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                            fontWeight: FontWeight.bold,
-                          ),
+                if (mode == _MockExamMode.exam)
+                  Padding(
+                    padding: const EdgeInsets.only(right: 16),
+                    child: Center(
+                      child: Text(
+                        _formatDuration(_remaining),
+                        style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                              fontWeight: FontWeight.bold,
+                            ),
+                      ),
                     ),
+                  )
+                else if (mode == _MockExamMode.practice)
+                  TextButton(
+                    onPressed: _savingProgress ? null : _interruptPractice,
+                    child: Text(_savingProgress ? '保存中…' : '中断'),
                   ),
-                ),
               ]
             : null,
       ),
@@ -476,7 +644,7 @@ class _MockExamScreenState extends ConsumerState<MockExamScreen> {
         Text('モードを選択', style: Theme.of(context).textTheme.headlineSmall),
         const SizedBox(height: 8),
         Text(
-          '本試験モードでは試験終了後に採点します。練習モードでは回答ごとに正解と解説を確認できます。',
+          '本試験モード・練習モードとも、全問題の回答後にまとめて採点します。練習モードは途中で中断・再開できます。',
           style: Theme.of(context).textTheme.bodyMedium,
         ),
         const SizedBox(height: 20),
@@ -490,7 +658,7 @@ class _MockExamScreenState extends ConsumerState<MockExamScreen> {
         _ModeSelectionCard(
           icon: Icons.school_outlined,
           title: '練習モード',
-          description: '1問回答するごとに、正解・不正解と解説を確認できます。',
+          description: '時間制限なし。途中で中断・再開でき、最後にまとめて採点します。',
           onTap: () => _selectMode(_MockExamMode.practice),
         ),
       ],
@@ -637,7 +805,6 @@ class _MockExamScreenState extends ConsumerState<MockExamScreen> {
 
     final question = questions[_currentIndex];
     final selected = _answers[_currentIndex];
-    final isPractice = _mode == _MockExamMode.practice;
     final subject = _subjectForQuestion(question);
     final subjectQuestionCount = subject == null
         ? 0
@@ -701,42 +868,13 @@ class _MockExamScreenState extends ConsumerState<MockExamScreen> {
                   number: i + 1,
                   text: question.choices[i],
                   isSelected: selected == i + 1,
-                  enabled: !_submitting && (!isPractice || selected == null),
+                  enabled: !_submitting,
                   onTap: () {
                     if (_submitting) return;
                     setState(() => _answers[_currentIndex] = i + 1);
                   },
                 ),
-              if (isPractice && selected != null) ...[
-                const SizedBox(height: 4),
-                Card(
-                  margin: EdgeInsets.zero,
-                  child: Padding(
-                    padding: const EdgeInsets.all(14),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        Text(
-                          question.isCorrectChoice(selected) ? '正解です' : '不正解です',
-                          style: Theme.of(context).textTheme.titleMedium,
-                        ),
-                        const SizedBox(height: 8),
-                        Text('正解：${_correctAnswerLabel(question)}'),
-                        if (question.explanation.isNotEmpty) ...[
-                          const Divider(height: 22),
-                          Text('解説', style: Theme.of(context).textTheme.titleSmall),
-                          const SizedBox(height: 6),
-                          Text(
-                            question.explanation,
-                            style: const TextStyle(fontSize: 14, height: 1.5),
-                          ),
-                        ],
-                      ],
-                    ),
-                  ),
-                ),
-              ],
-            ],
+           ],
           ),
         ),
         SafeArea(
@@ -769,8 +907,7 @@ class _MockExamScreenState extends ConsumerState<MockExamScreen> {
                           child: Text(_submitting ? '採点中…' : '採点する'),
                         )
                       : FilledButton(
-                          onPressed: _submitting ||
-                                  (isPractice && selected == null)
+                          onPressed: _submitting
                               ? null
                               : () {
                                   final showNextSubject =
