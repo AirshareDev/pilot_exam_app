@@ -39,11 +39,13 @@ class RandomQuestionScreen extends ConsumerStatefulWidget {
 
 class _RandomQuestionScreenState extends ConsumerState<RandomQuestionScreen> {
   late Future<List<Question>> _questionsFuture;
+  List<Question> _questions = const <Question>[];
   final ScrollController _scrollController = ScrollController();
 
   int _currentIndex = 0;
   int? _selectedChoice;
   bool _isAnswered = false;
+  Future<void> _answerWriteQueue = Future<void>.value();
   int _correctCount = 0;
   bool _isSavingBookmark = false;
   Map<String, QuestionLearningStatus> _statuses =
@@ -100,11 +102,19 @@ class _RandomQuestionScreenState extends ConsumerState<RandomQuestionScreen> {
       questions: questions,
     );
 
+    _questions = questions;
+
     if (questions.isNotEmpty) {
       if (_currentIndex >= questions.length) _currentIndex = 0;
       await _saveProgress(questions, nextIndex: _currentIndex);
     } else {
       await _clearProgress();
+    }
+
+    if (questions.isNotEmpty) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _precacheUpcomingImages(questions, _currentIndex);
+      });
     }
     return questions;
   }
@@ -427,9 +437,7 @@ class _RandomQuestionScreenState extends ConsumerState<RandomQuestionScreen> {
     final isCorrect = question.isCorrectChoice(selectedChoice);
     final previous = _statusFor(question);
     final answeredAt = DateTime.now();
-    final answeredIndex = _currentIndex;
 
-    // 正誤表示と学習履歴は先に更新し、DB保存を待たせない。
     setState(() {
       _selectedChoice = selectedChoice;
       _isAnswered = true;
@@ -446,35 +454,32 @@ class _RandomQuestionScreenState extends ConsumerState<RandomQuestionScreen> {
       };
     });
 
-    unawaited(
-      _persistAnswer(
-        question: question,
-        selectedChoice: selectedChoice,
-        answeredIndex: answeredIndex,
-      ),
-    );
+    _answerWriteQueue = _answerWriteQueue.then((_) => _persistAnswer(
+          question: question,
+          selectedChoice: selectedChoice,
+        ));
+    unawaited(_answerWriteQueue);
   }
 
   Future<void> _persistAnswer({
     required Question question,
     required int selectedChoice,
-    required int answeredIndex,
   }) async {
     try {
-      final repository = ref.read(questionRepositoryProvider);
-      final questions = await _questionsFuture;
+      await ref.read(questionRepositoryProvider).recordAnswer(
+            qualification: widget.qualification,
+            question: question,
+            selectedChoice: selectedChoice,
+          );
 
-      await Future.wait<void>([
-        repository.recordAnswer(
-          qualification: widget.qualification,
-          question: question,
-          selectedChoice: selectedChoice,
-        ),
-        if (answeredIndex >= questions.length - 1)
-          _clearProgress()
-        else
-          _saveProgress(questions, nextIndex: answeredIndex + 1),
-      ]);
+      final answeredIndex = _questions.indexWhere(
+        (item) => item.questionCode == question.questionCode,
+      );
+      if (answeredIndex < 0 || answeredIndex >= _questions.length - 1) {
+        await _clearProgress();
+      } else {
+        await _saveProgress(_questions, nextIndex: answeredIndex + 1);
+      }
     } catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -494,17 +499,16 @@ class _RandomQuestionScreenState extends ConsumerState<RandomQuestionScreen> {
       _isAnswered = false;
     });
     _scrollToTop();
-    _precacheNextQuestionImage(questions);
+    _precacheUpcomingImages(questions, _currentIndex);
   }
 
-  void _precacheNextQuestionImage(List<Question> questions) {
-    final nextIndex = _currentIndex + 1;
-    if (nextIndex >= questions.length) return;
-
-    final imagePath = questions[nextIndex].imagePath?.trim();
-    if (imagePath == null || imagePath.isEmpty) return;
-
-    unawaited(precacheImage(AssetImage(imagePath), context));
+  void _precacheUpcomingImages(List<Question> questions, int fromIndex) {
+    final lastIndex = (fromIndex + 2).clamp(0, questions.length - 1);
+    for (var index = fromIndex + 1; index <= lastIndex; index++) {
+      final imagePath = questions[index].imagePath?.trim();
+      if (imagePath == null || imagePath.isEmpty) continue;
+      unawaited(precacheImage(AssetImage(imagePath), context));
+    }
   }
 
   void _scrollToTop() {
