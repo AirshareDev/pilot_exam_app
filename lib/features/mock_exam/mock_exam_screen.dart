@@ -10,6 +10,8 @@ import '../../models/question.dart';
 import '../qualifications/selected_qualification_provider.dart';
 import '../results/results_provider.dart';
 
+enum _MockExamMode { exam, practice }
+
 class MockExamScreen extends ConsumerStatefulWidget {
   const MockExamScreen({super.key});
 
@@ -18,7 +20,7 @@ class MockExamScreen extends ConsumerStatefulWidget {
 }
 
 class _MockExamScreenState extends ConsumerState<MockExamScreen> {
-  static const int _questionLimit = 20;
+  static const int _questionLimit = 50;
   static const Duration _examDuration = Duration(minutes: 60);
 
   Timer? _timer;
@@ -27,20 +29,80 @@ class _MockExamScreenState extends ConsumerState<MockExamScreen> {
   List<Question>? _questions;
   final Map<int, int> _answers = <int, int>{};
   int _currentIndex = 0;
-  bool _loading = true;
+  _MockExamMode? _mode;
+  bool _loading = false;
   bool _submitting = false;
   String? _error;
 
   @override
   void initState() {
     super.initState();
-    Future<void>.microtask(_loadQuestions);
+  }
+
+  Future<void> _selectMode(_MockExamMode mode) async {
+    _timer?.cancel();
+    setState(() {
+      _mode = mode;
+      _remaining = _examDuration;
+      _startedAt = null;
+      _questions = null;
+      _answers.clear();
+      _currentIndex = 0;
+      _loading = true;
+      _submitting = false;
+      _error = null;
+    });
+    await _loadQuestions();
   }
 
   @override
   void dispose() {
     _timer?.cancel();
     super.dispose();
+  }
+
+  Future<List<Question>> _loadBalancedQuestions({
+    required String databaseFileName,
+  }) async {
+    final database = ref.read(questionsDatabaseProvider);
+    final subjects = await database.loadSubjects(
+      databaseFileName: databaseFileName,
+    );
+
+    final selected = <Question>[];
+    final selectedCodes = <String>{};
+    final activeSubjects = subjects
+        .where((subject) => subject.questionCount > 0)
+        .take(5)
+        .toList(growable: false);
+
+    for (final subject in activeSubjects) {
+      final subjectQuestions = await database.loadRandomQuestions(
+        databaseFileName: databaseFileName,
+        subjectId: subject.id,
+        limit: 10,
+      );
+      for (final question in subjectQuestions) {
+        if (selectedCodes.add(question.questionCode)) {
+          selected.add(question);
+        }
+      }
+    }
+
+    if (selected.length < _questionLimit) {
+      final supplemental = await database.loadRandomQuestions(
+        databaseFileName: databaseFileName,
+        limit: _questionLimit,
+      );
+      for (final question in supplemental) {
+        if (selected.length >= _questionLimit) break;
+        if (selectedCodes.add(question.questionCode)) {
+          selected.add(question);
+        }
+      }
+    }
+
+    return selected;
   }
 
   Future<void> _loadQuestions() async {
@@ -55,19 +117,16 @@ class _MockExamScreenState extends ConsumerState<MockExamScreen> {
         return;
       }
 
-      final questions = await ref
-          .read(questionsDatabaseProvider)
-          .loadRandomQuestions(
-            databaseFileName: qualification.databaseFileName,
-            limit: _questionLimit,
-          );
+      final questions = await _loadBalancedQuestions(
+        databaseFileName: qualification.databaseFileName,
+      );
       if (!mounted) return;
       setState(() {
         _questions = questions;
         _loading = false;
         _startedAt = DateTime.now();
       });
-      if (questions.isNotEmpty) {
+      if (questions.isNotEmpty && _mode == _MockExamMode.exam) {
         _timer = Timer.periodic(const Duration(seconds: 1), (_) {
           if (!mounted) return;
           if (_remaining.inSeconds <= 1) {
@@ -157,6 +216,8 @@ class _MockExamScreenState extends ConsumerState<MockExamScreen> {
             questions: questions,
             answers: Map<int, int>.unmodifiable(_answers),
             correct: correct,
+            startedAt: _startedAt ?? DateTime.now(),
+            completedAt: DateTime.now(),
           ),
         ),
       );
@@ -172,28 +233,66 @@ class _MockExamScreenState extends ConsumerState<MockExamScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final mode = _mode;
     return Scaffold(
       appBar: AppBar(
-        title: const Text('模擬試験'),
-        actions: [
-          Padding(
-            padding: const EdgeInsets.only(right: 16),
-            child: Center(
-              child: Text(
-                _formatDuration(_remaining),
-                style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.bold,
+        title: Text(
+          mode == _MockExamMode.exam
+              ? '模擬試験・本試験モード'
+              : mode == _MockExamMode.practice
+                  ? '模擬試験・練習モード'
+                  : '模擬試験',
+        ),
+        actions: mode == _MockExamMode.exam && !_loading
+            ? [
+                Padding(
+                  padding: const EdgeInsets.only(right: 16),
+                  child: Center(
+                    child: Text(
+                      _formatDuration(_remaining),
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.bold,
+                          ),
                     ),
-              ),
-            ),
-          ),
-        ],
+                  ),
+                ),
+              ]
+            : null,
       ),
       body: _buildBody(context),
     );
   }
 
+  Widget _buildModeSelection(BuildContext context) {
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(16, 20, 16, 28),
+      children: [
+        Text('モードを選択', style: Theme.of(context).textTheme.headlineSmall),
+        const SizedBox(height: 8),
+        Text(
+          '本試験モードでは試験終了後に採点します。練習モードでは回答ごとに正解と解説を確認できます。',
+          style: Theme.of(context).textTheme.bodyMedium,
+        ),
+        const SizedBox(height: 20),
+        _ModeSelectionCard(
+          icon: Icons.timer_outlined,
+          title: '本試験モード',
+          description: '制限時間60分。試験中は正解を表示せず、最後にまとめて採点します。',
+          onTap: () => _selectMode(_MockExamMode.exam),
+        ),
+        const SizedBox(height: 12),
+        _ModeSelectionCard(
+          icon: Icons.school_outlined,
+          title: '練習モード',
+          description: '1問回答するごとに、正解・不正解と解説を確認できます。',
+          onTap: () => _selectMode(_MockExamMode.practice),
+        ),
+      ],
+    );
+  }
+
   Widget _buildBody(BuildContext context) {
+    if (_mode == null) return _buildModeSelection(context);
     if (_loading) return const Center(child: CircularProgressIndicator());
     if (_error != null) {
       return Center(
@@ -223,6 +322,7 @@ class _MockExamScreenState extends ConsumerState<MockExamScreen> {
 
     final question = questions[_currentIndex];
     final selected = _answers[_currentIndex];
+    final isPractice = _mode == _MockExamMode.practice;
 
     return Column(
       children: [
@@ -276,12 +376,41 @@ class _MockExamScreenState extends ConsumerState<MockExamScreen> {
                   number: i + 1,
                   text: question.choices[i],
                   isSelected: selected == i + 1,
-                  enabled: !_submitting,
+                  enabled: !_submitting && (!isPractice || selected == null),
                   onTap: () {
                     if (_submitting) return;
                     setState(() => _answers[_currentIndex] = i + 1);
                   },
                 ),
+              if (isPractice && selected != null) ...[
+                const SizedBox(height: 4),
+                Card(
+                  margin: EdgeInsets.zero,
+                  child: Padding(
+                    padding: const EdgeInsets.all(14),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Text(
+                          question.isCorrectChoice(selected) ? '正解です' : '不正解です',
+                          style: Theme.of(context).textTheme.titleMedium,
+                        ),
+                        const SizedBox(height: 8),
+                        Text('正解：${_correctAnswerLabel(question)}'),
+                        if (question.explanation.isNotEmpty) ...[
+                          const Divider(height: 22),
+                          Text('解説', style: Theme.of(context).textTheme.titleSmall),
+                          const SizedBox(height: 6),
+                          Text(
+                            question.explanation,
+                            style: const TextStyle(fontSize: 14, height: 1.5),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                ),
+              ],
             ],
           ),
         ),
@@ -307,7 +436,8 @@ class _MockExamScreenState extends ConsumerState<MockExamScreen> {
                           child: Text(_submitting ? '採点中…' : '採点する'),
                         )
                       : FilledButton(
-                          onPressed: _submitting
+                          onPressed: _submitting ||
+                                  (isPractice && selected == null)
                               ? null
                               : () => setState(() => _currentIndex++),
                           child: const Text('次へ'),
@@ -318,6 +448,52 @@ class _MockExamScreenState extends ConsumerState<MockExamScreen> {
           ),
         ),
       ],
+    );
+  }
+}
+
+class _ModeSelectionCard extends StatelessWidget {
+  const _ModeSelectionCard({
+    required this.icon,
+    required this.title,
+    required this.description,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String title;
+  final String description;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      margin: EdgeInsets.zero,
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.all(18),
+          child: Row(
+            children: [
+              Icon(icon, size: 36),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(title, style: Theme.of(context).textTheme.titleLarge),
+                    const SizedBox(height: 6),
+                    Text(description),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              const Icon(Icons.chevron_right),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }
@@ -388,17 +564,22 @@ class _MockExamResultScreen extends StatelessWidget {
     required this.questions,
     required this.answers,
     required this.correct,
+    required this.startedAt,
+    required this.completedAt,
   });
 
   final List<Question> questions;
   final Map<int, int> answers;
   final int correct;
+  final DateTime startedAt;
+  final DateTime completedAt;
 
   @override
   Widget build(BuildContext context) {
     final total = questions.length;
     final score = total == 0 ? 0.0 : correct / total * 100;
     final passed = score >= 70;
+    final elapsed = completedAt.difference(startedAt);
     final wrongIndexes = <int>[
       for (var i = 0; i < questions.length; i++)
         if (answers[i] == null || !questions[i].isCorrectChoice(answers[i]!)) i,
@@ -434,10 +615,25 @@ class _MockExamResultScreen extends StatelessWidget {
                   ),
                   const SizedBox(height: 6),
                   Text('$total問中 $correct問正解'),
+                  const SizedBox(height: 4),
+                  Text('所要時間：${_formatDuration(elapsed)}'),
                 ],
               ),
             ),
           ),
+          if (total < _MockExamScreenState._questionLimit) ...[
+            const SizedBox(height: 12),
+            Card(
+              margin: EdgeInsets.zero,
+              child: Padding(
+                padding: const EdgeInsets.all(14),
+                child: Text(
+                  '登録済みの問題数が不足しているため、今回は$total問で実施しました。'
+                  '正式データでは5科目×10問の50問を出題します。',
+                ),
+              ),
+            ),
+          ],
           if (wrongIndexes.isNotEmpty) ...[
             const SizedBox(height: 12),
             FilledButton.icon(
