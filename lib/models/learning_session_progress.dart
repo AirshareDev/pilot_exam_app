@@ -1,12 +1,19 @@
 import 'qualification.dart';
 import 'dart:convert';
 
+enum ResumeType {
+  mockExam,
+  randomLearning,
+  subjectLearning,
+}
+
 class LearningSessionProgress {
   const LearningSessionProgress({
     required this.qualificationId,
     required this.qualificationCode,
     required this.qualificationName,
     required this.mode,
+    this.resumeType = ResumeType.randomLearning,
     required this.questionCodes,
     required this.nextIndex,
     required this.correctCount,
@@ -23,6 +30,7 @@ class LearningSessionProgress {
   final String qualificationCode;
   final String qualificationName;
   final String mode;
+  final ResumeType resumeType;
   final List<String> questionCodes;
   final int nextIndex;
   final int correctCount;
@@ -56,6 +64,7 @@ class LearningSessionProgress {
         'qualificationCode': qualificationCode,
         'qualificationName': qualificationName,
         'mode': mode,
+        'resumeType': resumeType.name,
         'questionCodes': questionCodes,
         'nextIndex': nextIndex,
         'correctCount': correctCount,
@@ -102,6 +111,10 @@ class LearningSessionProgress {
       qualificationCode: map['qualificationCode']?.toString() ?? '',
       qualificationName: map['qualificationName']?.toString() ?? '',
       mode: map['mode']?.toString() ?? 'random',
+      resumeType: _readResumeType(
+        map['resumeType'],
+        mode: map['mode']?.toString() ?? 'random',
+      ),
       questionCodes: codes,
       nextIndex: _readInt(map['nextIndex']),
       correctCount: _readInt(map['correctCount']),
@@ -143,4 +156,14 @@ class LearningSessionRouteArguments {
 
   final Qualification qualification;
   final LearningSessionProgress progress;
+}
+
+ResumeType _readResumeType(Object? value, {required String mode}) {
+  final name = value?.toString();
+  for (final type in ResumeType.values) {
+    if (type.name == name) return type;
+  }
+  if (mode == 'mockPractice') return ResumeType.mockExam;
+  if (mode == 'subject') return ResumeType.subjectLearning;
+  return ResumeType.randomLearning;
 }

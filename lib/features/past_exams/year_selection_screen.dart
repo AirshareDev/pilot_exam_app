@@ -6,6 +6,7 @@ import '../../models/exam_session.dart';
 import '../../models/qualification.dart';
 import '../../shared/app_page.dart';
 import '../qualifications/selected_qualification_provider.dart';
+import '../learning_progress/resume_guard.dart';
 import 'year_provider.dart';
 
 class YearSelectionScreen extends ConsumerWidget {
@@ -74,7 +75,11 @@ class _SessionListView extends ConsumerWidget {
                   session: session,
                   onTap: session.questionCount <= 0
                       ? null
-                      : () {
+                      : () async {
+                          if (!await confirmDiscardInterruptedMockExam(context, ref)) {
+                  return;
+                }
+                          if (!context.mounted) return;
                           context.push(
                             '/past-exams/${qualification.id}/${session.id}',
                             extra: ExamSessionRouteArguments(

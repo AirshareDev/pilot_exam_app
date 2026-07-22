@@ -12,6 +12,7 @@ import '../../models/question.dart';
 import '../../models/subject.dart';
 import '../../repositories/question_repository.dart';
 import '../learning_progress/learning_session_progress_provider.dart';
+import '../learning_progress/resume_guard.dart';
 import '../qualifications/selected_qualification_provider.dart';
 import '../results/results_provider.dart';
 
@@ -144,6 +145,8 @@ class _MockExamScreenState extends ConsumerState<MockExamScreen> {
   }
 
   Future<void> _selectMode(_MockExamMode mode) async {
+    if (!await confirmDiscardInterruptedMockExam(context, ref)) return;
+    if (!mounted) return;
     _timer?.cancel();
     setState(() {
       _mode = mode;
@@ -483,6 +486,7 @@ class _MockExamScreenState extends ConsumerState<MockExamScreen> {
         qualificationCode: qualification.code,
         qualificationName: qualification.name,
         mode: 'mockPractice',
+        resumeType: ResumeType.mockExam,
         questionCodes: questions
             .map((question) => question.questionCode)
             .toList(growable: false),

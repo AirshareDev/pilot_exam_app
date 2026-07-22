@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../models/qualification.dart';
 import '../../models/subject.dart';
 import '../qualifications/selected_qualification_provider.dart';
+import '../learning_progress/resume_guard.dart';
 import 'subject_provider.dart';
 
 class SubjectSelectionScreen extends ConsumerWidget {
@@ -70,7 +71,11 @@ class _SubjectBody extends ConsumerWidget {
                 subject: subject,
                 onTap: subject.questionCount <= 0
                     ? null
-                    : () {
+                    : () async {
+                        if (!await confirmDiscardInterruptedMockExam(context, ref)) {
+                  return;
+                }
+                        if (!context.mounted) return;
                         context.push(
                           '/quick-practice/${qualification.id}/${subject.id}',
                           extra: SubjectRouteArguments(

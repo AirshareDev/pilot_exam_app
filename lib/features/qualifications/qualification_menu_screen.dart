@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../models/qualification.dart';
 import '../../shared/app_page.dart';
+import '../learning_progress/resume_guard.dart';
 
-class QualificationMenuScreen extends StatelessWidget {
+class QualificationMenuScreen extends ConsumerWidget {
   const QualificationMenuScreen({
     required this.qualification,
     super.key,
@@ -13,7 +15,7 @@ class QualificationMenuScreen extends StatelessWidget {
   final Qualification qualification;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     return AppPage(
       title: qualification.name,
       body: ListView(
@@ -23,10 +25,16 @@ class QualificationMenuScreen extends StatelessWidget {
             icon: Icons.shuffle,
             title: 'ランダム問題',
             description: '問題をランダムに20問出題します。',
-            onTap: () => context.push(
-              '/qualifications/${qualification.id}/random',
-              extra: qualification,
-            ),
+            onTap: () async {
+              if (!await confirmDiscardInterruptedMockExam(context, ref)) {
+                return;
+              }
+              if (!context.mounted) return;
+              context.push(
+                '/qualifications/${qualification.id}/random',
+                extra: qualification,
+              );
+            },
           ),
           if (qualification.features.hasSubjects) ...[
             const SizedBox(height: 12),

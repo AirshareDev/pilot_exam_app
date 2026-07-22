@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../models/learning_session_progress.dart';
 import '../../models/qualification.dart';
 import '../learning_progress/learning_session_progress_provider.dart';
+import '../learning_progress/resume_guard.dart';
 import '../qualifications/qualification_provider.dart';
 import '../qualifications/selected_qualification_provider.dart';
 
@@ -84,6 +85,7 @@ class HomeScreen extends ConsumerWidget {
               const SizedBox(height: 12),
               _LearningMenuGrid(
                 selectedQualification: selectedQualification,
+                ref: ref,
               ),
               const SizedBox(height: 28),
               Text(
@@ -353,9 +355,11 @@ class _ContinueLearningCard extends StatelessWidget {
 class _LearningMenuGrid extends StatelessWidget {
   const _LearningMenuGrid({
     required this.selectedQualification,
+    required this.ref,
   });
 
   final Qualification? selectedQualification;
+  final WidgetRef ref;
 
   @override
   Widget build(BuildContext context) {
@@ -365,7 +369,11 @@ class _LearningMenuGrid extends StatelessWidget {
         label: 'ランダム\n一問一答',
         onTap: selectedQualification == null
             ? null
-            : () {
+            : () async {
+                if (!await confirmDiscardInterruptedMockExam(context, ref)) {
+                  return;
+                }
+                if (!context.mounted) return;
                 context.push(
                   '/qualifications/'
                   '${selectedQualification!.id}/random',
@@ -386,7 +394,12 @@ class _LearningMenuGrid extends StatelessWidget {
       _MenuGridItem(
         icon: Icons.timer_outlined,
         label: '模擬試験',
-        onTap: () => context.push('/mock-exam'),
+        onTap: () async {
+          if (!await confirmDiscardInterruptedMockExam(context, ref)) {
+                  return;
+                }
+          if (context.mounted) context.push('/mock-exam');
+        },
       ),
     ];
 

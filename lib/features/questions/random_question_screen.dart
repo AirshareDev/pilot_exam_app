@@ -574,6 +574,9 @@ class _RandomQuestionScreenState extends ConsumerState<RandomQuestionScreen> {
       qualificationCode: widget.qualification.code,
       qualificationName: widget.qualification.name,
       mode: _sessionMode,
+      resumeType: widget.subjectId != null
+          ? ResumeType.subjectLearning
+          : ResumeType.randomLearning,
       questionCodes: questions
           .map((question) => question.questionCode)
           .toList(growable: false),
