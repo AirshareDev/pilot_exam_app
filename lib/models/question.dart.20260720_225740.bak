@@ -1,0 +1,302 @@
+class Question {
+  const Question({
+    required this.id,
+    required this.qualificationId,
+    required this.questionText,
+    required this.choices,
+    required this.correctChoice,
+    required this.explanation,
+    required this.isActive,
+    this.subjectId,
+    this.subjectName,
+    this.year,
+    this.session,
+    this.questionNo,
+    this.imagePath,
+    this.audioPath,
+    this.reference,
+    this.isBookmarked = false,
+  });
+
+  final int id;
+  final int qualificationId;
+
+  final int? subjectId;
+  final String? subjectName;
+
+  final int? year;
+  final String? session;
+  final int? questionNo;
+
+  final String questionText;
+  final String? imagePath;
+  final String? audioPath;
+
+  final List<String> choices;
+  final int correctChoice;
+
+  final String explanation;
+  final String? reference;
+
+  final bool isActive;
+  final bool isBookmarked;
+
+  /// 既存画面との互換用
+  String get text => questionText;
+
+  bool isCorrectChoice(int choiceNumber) {
+    return choiceNumber == correctChoice;
+  }
+
+  String getChoice(int choiceNumber) {
+    if (choiceNumber < 1 || choiceNumber > choices.length) {
+      throw RangeError.range(
+        choiceNumber,
+        1,
+        choices.length,
+        'choiceNumber',
+      );
+    }
+
+    return choices[choiceNumber - 1];
+  }
+
+  String get metadataText {
+    final parts = <String>[];
+
+    final currentSubjectName = subjectName;
+
+    if (currentSubjectName != null && currentSubjectName.isNotEmpty) {
+      parts.add(currentSubjectName);
+    }
+
+    if (year != null) {
+      parts.add('$year年');
+    }
+
+    final currentSession = session;
+
+    if (currentSession != null && currentSession.isNotEmpty) {
+      parts.add(currentSession);
+    }
+
+    if (questionNo != null) {
+      parts.add('問$questionNo');
+    }
+
+    return parts.join('・');
+  }
+
+  Question copyWith({
+    int? id,
+    int? qualificationId,
+    int? subjectId,
+    String? subjectName,
+    int? year,
+    String? session,
+    int? questionNo,
+    String? questionText,
+    String? imagePath,
+    String? audioPath,
+    List<String>? choices,
+    int? correctChoice,
+    String? explanation,
+    String? reference,
+    bool? isActive,
+    bool? isBookmarked,
+  }) {
+    return Question(
+      id: id ?? this.id,
+      qualificationId: qualificationId ?? this.qualificationId,
+      subjectId: subjectId ?? this.subjectId,
+      subjectName: subjectName ?? this.subjectName,
+      year: year ?? this.year,
+      session: session ?? this.session,
+      questionNo: questionNo ?? this.questionNo,
+      questionText: questionText ?? this.questionText,
+      imagePath: imagePath ?? this.imagePath,
+      audioPath: audioPath ?? this.audioPath,
+      choices: choices ?? this.choices,
+      correctChoice: correctChoice ?? this.correctChoice,
+      explanation: explanation ?? this.explanation,
+      reference: reference ?? this.reference,
+      isActive: isActive ?? this.isActive,
+      isBookmarked: isBookmarked ?? this.isBookmarked,
+    );
+  }
+
+  factory Question.fromMap(Map<String, Object?> map) {
+    return Question(
+      id: _readRequiredInt(
+        map,
+        const ['question_id', 'id'],
+      ),
+      qualificationId: _readRequiredInt(
+        map,
+        const ['qualification_id'],
+      ),
+      subjectId: _readNullableInt(
+        map,
+        const ['subject_id'],
+      ),
+      subjectName: _readNullableString(
+        map,
+        const ['subject_name'],
+      ),
+      year: _readNullableInt(
+        map,
+        const ['year'],
+      ),
+      session: _readNullableString(
+        map,
+        const ['session'],
+      ),
+      questionNo: _readNullableInt(
+        map,
+        const ['question_no'],
+      ),
+      questionText: _readRequiredString(
+        map,
+        const ['question_text', 'question', 'text'],
+      ),
+      imagePath: _readNullableString(
+        map,
+        const ['image_path'],
+      ),
+      audioPath: _readNullableString(
+        map,
+        const ['audio_path'],
+      ),
+      choices: [
+        _readRequiredString(map, const ['choice_1']),
+        _readRequiredString(map, const ['choice_2']),
+        _readRequiredString(map, const ['choice_3']),
+        _readRequiredString(map, const ['choice_4']),
+      ],
+      correctChoice: _readRequiredInt(
+        map,
+        const ['correct_choice'],
+      ),
+      explanation: _readNullableString(
+            map,
+            const ['explanation'],
+          ) ??
+          '',
+      reference: _readNullableString(
+        map,
+        const ['reference'],
+      ),
+      isActive: (_readNullableInt(
+                map,
+                const ['is_active'],
+              ) ??
+              1) ==
+          1,
+      isBookmarked: (_readNullableInt(
+                map,
+                const ['is_bookmarked'],
+              ) ??
+              0) ==
+          1,
+    );
+  }
+}
+
+Object? _findValue(
+  Map<String, Object?> map,
+  List<String> keys,
+) {
+  for (final key in keys) {
+    if (map.containsKey(key)) {
+      return map[key];
+    }
+  }
+
+  return null;
+}
+
+int _readRequiredInt(
+  Map<String, Object?> map,
+  List<String> keys,
+) {
+  final value = _findValue(map, keys);
+
+  if (value is int) {
+    return value;
+  }
+
+  if (value is num) {
+    return value.toInt();
+  }
+
+  if (value is String) {
+    final parsed = int.tryParse(value);
+
+    if (parsed != null) {
+      return parsed;
+    }
+  }
+
+  throw FormatException(
+    '整数項目を読み込めませんでした: ${keys.join(', ')}',
+  );
+}
+
+int? _readNullableInt(
+  Map<String, Object?> map,
+  List<String> keys,
+) {
+  final value = _findValue(map, keys);
+
+  if (value == null) {
+    return null;
+  }
+
+  if (value is int) {
+    return value;
+  }
+
+  if (value is num) {
+    return value.toInt();
+  }
+
+  if (value is String) {
+    return int.tryParse(value);
+  }
+
+  return null;
+}
+
+String _readRequiredString(
+  Map<String, Object?> map,
+  List<String> keys,
+) {
+  final value = _findValue(map, keys);
+
+  if (value == null) {
+    throw FormatException(
+      '文字列項目を読み込めませんでした: ${keys.join(', ')}',
+    );
+  }
+
+  return value.toString();
+}
+
+String? _readNullableString(
+  Map<String, Object?> map,
+  List<String> keys,
+) {
+  final value = _findValue(map, keys);
+
+  if (value == null) {
+    return null;
+  }
+
+  final text = value.toString().trim();
+
+  if (text.isEmpty) {
+    return null;
+  }
+
+  return text;
+}

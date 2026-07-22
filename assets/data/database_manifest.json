@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "databases": {
+    "catalog.db": { "version": 1 },
+    "questions.db": { "version": 1 },
+    "sample.db": { "version": 1 },
+    "private_airplane.db": { "version": 1 },
+    "private_helicopter.db": { "version": 1 },
+    "commercial_airplane.db": { "version": 1 },
+    "commercial_helicopter.db": { "version": 1 },
+    "radio_operator.db": { "version": 1 },
+    "instrument_rating.db": { "version": 1 },
+    "flight_instructor.db": { "version": 1 },
+    "user.db": { "version": 1 }
+  }
+}

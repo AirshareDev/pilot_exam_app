@@ -1,0 +1,6 @@
+integrity: ok
+questions: 20
+five_choice: 10
+images: 7
+bad_answers: 0
+OCR確認対象: なし（PDF埋め込みテキストと紙面画像を照合）

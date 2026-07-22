@@ -1,0 +1,1498 @@
+
+========== lib\app\router.dart ==========
+import 'package:go_router/go_router.dart';
+
+import '../features/home/home_screen.dart';
+import '../features/placeholder/feature_placeholder_screen.dart';
+import '../features/qualifications/qualification_menu_screen.dart';
+import '../features/qualifications/qualification_screen.dart';
+import '../features/questions/random_question_screen.dart';
+import '../features/subjects/subject_selection_screen.dart';
+
+final GoRouter appRouter = GoRouter(
+  initialLocation: '/',
+  routes: <RouteBase>[
+    GoRoute(
+      path: '/',
+      builder: (context, state) => const HomeScreen(),
+    ),
+    GoRoute(
+      path: '/qualifications',
+      builder: (context, state) => const QualificationScreen(),
+      routes: [
+        GoRoute(
+          path: ':qualificationId',
+          builder: (context, state) {
+            final qualificationId = int.tryParse(
+                  state.pathParameters['qualificationId'] ?? '',
+                ) ??
+                0;
+
+            final qualificationName = state.extra as String? ?? '資格別学習';
+
+            return QualificationMenuScreen(
+              qualificationId: qualificationId,
+              qualificationName: qualificationName,
+            );
+          },
+          routes: [
+            GoRoute(
+              path: 'random',
+              builder: (context, state) {
+                final qualificationId = int.tryParse(
+                      state.pathParameters['qualificationId'] ?? '',
+                    ) ??
+                    0;
+
+                final qualificationName = state.extra as String? ?? '資格試験';
+
+                return RandomQuestionScreen(
+                  qualificationId: qualificationId,
+                  qualificationName: qualificationName,
+                );
+              },
+            ),
+          ],
+        ),
+      ],
+    ),
+    GoRoute(
+      path: '/quick-practice',
+      builder: (context, state) {
+        return const SubjectSelectionScreen();
+      },
+      routes: [
+        GoRoute(
+          path: ':qualificationId/:subjectId',
+          builder: (context, state) {
+            final qualificationId = int.tryParse(
+                  state.pathParameters['qualificationId'] ?? '',
+                ) ??
+                0;
+
+            final subjectId = int.tryParse(
+                  state.pathParameters['subjectId'] ?? '',
+                ) ??
+                0;
+
+            final arguments = state.extra is SubjectRouteArguments
+                ? state.extra! as SubjectRouteArguments
+                : const SubjectRouteArguments(
+                    qualificationName: '資格試験',
+                    subjectName: '科目別',
+                  );
+
+            return RandomQuestionScreen(
+              qualificationId: qualificationId,
+              qualificationName: arguments.qualificationName,
+              subjectId: subjectId,
+              subjectName: arguments.subjectName,
+            );
+          },
+        ),
+      ],
+    ),
+    GoRoute(
+      path: '/past-exams',
+      builder: (context, state) => const FeaturePlaceholderScreen(
+        title: '年度別過去問',
+        description: '資格・年度・期を選択して問題を解く画面を実装します。',
+      ),
+    ),
+    GoRoute(
+      path: '/mock-exam',
+      builder: (context, state) => const FeaturePlaceholderScreen(
+        title: '模擬試験',
+        description: '本試験形式の出題・制限時間・採点を実装します。',
+      ),
+    ),
+    GoRoute(
+      path: '/results',
+      builder: (context, state) => const FeaturePlaceholderScreen(
+        title: '成績',
+        description: '回答履歴、正答率、苦手科目を表示します。',
+      ),
+    ),
+    GoRoute(
+      path: '/settings',
+      builder: (context, state) => const FeaturePlaceholderScreen(
+        title: '設定',
+        description: 'DB情報、表示設定、購入状態などを配置します。',
+      ),
+    ),
+  ],
+);
+
+
+========== lib\features\home\home_screen.dart ==========
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+
+import '../../models/qualification.dart';
+import '../qualifications/qualification_provider.dart';
+import '../qualifications/selected_qualification_provider.dart';
+
+class HomeScreen extends ConsumerWidget {
+  const HomeScreen({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final qualifications = ref.watch(qualificationsProvider);
+    final selectedQualificationId = ref.watch(selectedQualificationIdProvider);
+
+    final selectedQualification = _resolveSelectedQualification(
+      qualifications,
+      selectedQualificationId,
+    );
+
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('パイロット試験対策'),
+        actions: [
+          IconButton(
+            tooltip: '設定',
+            onPressed: () => context.push('/settings'),
+            icon: const Icon(Icons.settings_outlined),
+          ),
+        ],
+      ),
+      body: SafeArea(
+        child: RefreshIndicator(
+          onRefresh: () async {
+            ref.invalidate(qualificationsProvider);
+            await ref.read(qualificationsProvider.future);
+          },
+          child: ListView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: const EdgeInsets.all(16),
+            children: [
+              _SelectedQualificationCard(
+                qualifications: qualifications,
+                selectedQualificationId: selectedQualificationId,
+                onTap: () => context.push('/qualifications'),
+              ),
+              const SizedBox(height: 24),
+              Text(
+                '学習メニュー',
+                style: Theme.of(context).textTheme.titleLarge,
+              ),
+              const SizedBox(height: 12),
+              _LearningMenuGrid(
+                selectedQualification: selectedQualification,
+              ),
+              const SizedBox(height: 28),
+              Text(
+                '学習記録',
+                style: Theme.of(context).textTheme.titleLarge,
+              ),
+              const SizedBox(height: 12),
+              _RecordMenuRow(
+                onResults: () => context.push('/results'),
+                onIncorrectQuestions: () {
+                  _showComingSoon(
+                    context,
+                    '間違えた問題は、学習履歴機能とあわせて実装します。',
+                  );
+                },
+                onBookmarks: () {
+                  _showComingSoon(
+                    context,
+                    'ブックマーク機能は、次の工程で実装します。',
+                  );
+                },
+              ),
+              const SizedBox(height: 24),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  static void _showComingSoon(
+    BuildContext context,
+    String message,
+  ) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message)),
+    );
+  }
+}
+
+class _SelectedQualificationCard extends StatelessWidget {
+  const _SelectedQualificationCard({
+    required this.qualifications,
+    required this.selectedQualificationId,
+    required this.onTap,
+  });
+
+  final AsyncValue<List<Qualification>> qualifications;
+  final AsyncValue<int> selectedQualificationId;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.all(18),
+          child: qualifications.when(
+            loading: () => const _QualificationLoadingView(),
+            error: (error, stackTrace) => _QualificationErrorView(
+              message: error.toString(),
+            ),
+            data: (items) {
+              return selectedQualificationId.when(
+                loading: () => const _QualificationLoadingView(),
+                error: (error, stackTrace) => _QualificationErrorView(
+                  message: error.toString(),
+                ),
+                data: (selectedId) {
+                  final selected = _findQualification(
+                    items,
+                    selectedId,
+                  );
+
+                  if (selected == null) {
+                    return const _QualificationErrorView(
+                      message: '選択中の資格情報が見つかりません。',
+                    );
+                  }
+
+                  return Row(
+                    children: [
+                      CircleAvatar(
+                        radius: 26,
+                        child: Icon(
+                          selected.id == defaultQualificationId
+                              ? Icons.menu_book_outlined
+                              : Icons.flight_outlined,
+                        ),
+                      ),
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              '選択中の資格',
+                              style: Theme.of(context).textTheme.labelLarge,
+                            ),
+                            const SizedBox(height: 5),
+                            Text(
+                              selected.name,
+                              style: Theme.of(context).textTheme.titleMedium,
+                            ),
+                            if (selected.description.isNotEmpty) ...[
+                              const SizedBox(height: 4),
+                              Text(
+                                selected.description,
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                                style: Theme.of(context).textTheme.bodySmall,
+                              ),
+                            ],
+                            if (selected.id == defaultQualificationId) ...[
+                              const SizedBox(height: 8),
+                              const _FreeLabel(),
+                            ],
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      const Icon(Icons.expand_more),
+                    ],
+                  );
+                },
+              );
+            },
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _QualificationLoadingView extends StatelessWidget {
+  const _QualificationLoadingView();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Row(
+      children: [
+        SizedBox.square(
+          dimension: 22,
+          child: CircularProgressIndicator(strokeWidth: 2),
+        ),
+        SizedBox(width: 14),
+        Text('資格情報を読み込んでいます。'),
+      ],
+    );
+  }
+}
+
+class _QualificationErrorView extends StatelessWidget {
+  const _QualificationErrorView({
+    required this.message,
+  });
+
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Icon(Icons.error_outline),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('資格情報を読み込めませんでした。'),
+              const SizedBox(height: 4),
+              Text(
+                message,
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+            ],
+          ),
+        ),
+        const Icon(Icons.chevron_right),
+      ],
+    );
+  }
+}
+
+class _FreeLabel extends StatelessWidget {
+  const _FreeLabel();
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: colorScheme.primaryContainer,
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(
+          horizontal: 10,
+          vertical: 3,
+        ),
+        child: Text(
+          '無料',
+          style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                color: colorScheme.onPrimaryContainer,
+              ),
+        ),
+      ),
+    );
+  }
+}
+
+class _LearningMenuGrid extends StatelessWidget {
+  const _LearningMenuGrid({
+    required this.selectedQualification,
+  });
+
+  final Qualification? selectedQualification;
+
+  @override
+  Widget build(BuildContext context) {
+    final items = [
+      _MenuGridItem(
+        icon: Icons.shuffle,
+        label: 'ランダム\n一問一答',
+        onTap: selectedQualification == null
+            ? null
+            : () {
+                context.push(
+                  '/qualifications/'
+                  '${selectedQualification!.id}/random',
+                  extra: selectedQualification!.name,
+                );
+              },
+      ),
+      _MenuGridItem(
+        icon: Icons.category_outlined,
+        label: '科目別',
+        onTap: () => context.push('/quick-practice'),
+      ),
+      _MenuGridItem(
+        icon: Icons.history,
+        label: '年度別\n過去問',
+        onTap: () => context.push('/past-exams'),
+      ),
+      _MenuGridItem(
+        icon: Icons.timer_outlined,
+        label: '模擬試験',
+        onTap: () => context.push('/mock-exam'),
+      ),
+    ];
+
+    return GridView.builder(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      itemCount: items.length,
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 2,
+        crossAxisSpacing: 12,
+        mainAxisSpacing: 12,
+        childAspectRatio: 1.25,
+      ),
+      itemBuilder: (context, index) {
+        final item = items[index];
+
+        return _MenuGridCard(
+          icon: item.icon,
+          label: item.label,
+          onTap: item.onTap,
+        );
+      },
+    );
+  }
+}
+
+class _MenuGridCard extends StatelessWidget {
+  const _MenuGridCard({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String label;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final enabled = onTap != null;
+
+    return Card(
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Opacity(
+            opacity: enabled ? 1 : 0.45,
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(
+                  icon,
+                  size: 36,
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  label,
+                  textAlign: TextAlign.center,
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _RecordMenuRow extends StatelessWidget {
+  const _RecordMenuRow({
+    required this.onResults,
+    required this.onIncorrectQuestions,
+    required this.onBookmarks,
+  });
+
+  final VoidCallback onResults;
+  final VoidCallback onIncorrectQuestions;
+  final VoidCallback onBookmarks;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Expanded(
+          child: _RecordMenuCard(
+            icon: Icons.insights_outlined,
+            label: '成績',
+            onTap: onResults,
+          ),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: _RecordMenuCard(
+            icon: Icons.refresh,
+            label: '復習',
+            onTap: onIncorrectQuestions,
+          ),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: _RecordMenuCard(
+            icon: Icons.bookmark_outline,
+            label: '保存',
+            onTap: onBookmarks,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _RecordMenuCard extends StatelessWidget {
+  const _RecordMenuCard({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(
+            horizontal: 8,
+            vertical: 18,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                icon,
+                size: 30,
+              ),
+              const SizedBox(height: 8),
+              Text(
+                label,
+                textAlign: TextAlign.center,
+                style: Theme.of(context).textTheme.titleSmall,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _MenuGridItem {
+  const _MenuGridItem({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String label;
+  final VoidCallback? onTap;
+}
+
+Qualification? _resolveSelectedQualification(
+  AsyncValue<List<Qualification>> qualifications,
+  AsyncValue<int> selectedQualificationId,
+) {
+  final items = qualifications.valueOrNull;
+  final selectedId = selectedQualificationId.valueOrNull;
+
+  if (items == null || selectedId == null) {
+    return null;
+  }
+
+  return _findQualification(items, selectedId);
+}
+
+Qualification? _findQualification(
+  List<Qualification> qualifications,
+  int qualificationId,
+) {
+  for (final qualification in qualifications) {
+    if (qualification.id == qualificationId) {
+      return qualification;
+    }
+  }
+
+  return null;
+}
+
+
+========== lib\models\question.dart ==========
+class Question {
+  const Question({
+    required this.id,
+    required this.qualificationId,
+    required this.questionText,
+    required this.choices,
+    required this.correctChoice,
+    required this.explanation,
+    required this.isActive,
+    this.subjectId,
+    this.subjectName,
+    this.year,
+    this.session,
+    this.questionNo,
+    this.imagePath,
+    this.audioPath,
+    this.reference,
+    this.isBookmarked = false,
+  });
+
+  final int id;
+  final int qualificationId;
+
+  final int? subjectId;
+  final String? subjectName;
+
+  final int? year;
+  final String? session;
+  final int? questionNo;
+
+  final String questionText;
+  final String? imagePath;
+  final String? audioPath;
+
+  final List<String> choices;
+  final int correctChoice;
+
+  final String explanation;
+  final String? reference;
+
+  final bool isActive;
+  final bool isBookmarked;
+
+  /// 既存画面との互換用
+  String get text => questionText;
+
+  bool isCorrectChoice(int choiceNumber) {
+    return choiceNumber == correctChoice;
+  }
+
+  String getChoice(int choiceNumber) {
+    if (choiceNumber < 1 || choiceNumber > choices.length) {
+      throw RangeError.range(
+        choiceNumber,
+        1,
+        choices.length,
+        'choiceNumber',
+      );
+    }
+
+    return choices[choiceNumber - 1];
+  }
+
+  String get metadataText {
+    final parts = <String>[];
+
+    final currentSubjectName = subjectName;
+
+    if (currentSubjectName != null && currentSubjectName.isNotEmpty) {
+      parts.add(currentSubjectName);
+    }
+
+    if (year != null) {
+      parts.add('$year年');
+    }
+
+    final currentSession = session;
+
+    if (currentSession != null && currentSession.isNotEmpty) {
+      parts.add(currentSession);
+    }
+
+    if (questionNo != null) {
+      parts.add('問$questionNo');
+    }
+
+    return parts.join('・');
+  }
+
+  Question copyWith({
+    int? id,
+    int? qualificationId,
+    int? subjectId,
+    String? subjectName,
+    int? year,
+    String? session,
+    int? questionNo,
+    String? questionText,
+    String? imagePath,
+    String? audioPath,
+    List<String>? choices,
+    int? correctChoice,
+    String? explanation,
+    String? reference,
+    bool? isActive,
+    bool? isBookmarked,
+  }) {
+    return Question(
+      id: id ?? this.id,
+      qualificationId: qualificationId ?? this.qualificationId,
+      subjectId: subjectId ?? this.subjectId,
+      subjectName: subjectName ?? this.subjectName,
+      year: year ?? this.year,
+      session: session ?? this.session,
+      questionNo: questionNo ?? this.questionNo,
+      questionText: questionText ?? this.questionText,
+      imagePath: imagePath ?? this.imagePath,
+      audioPath: audioPath ?? this.audioPath,
+      choices: choices ?? this.choices,
+      correctChoice: correctChoice ?? this.correctChoice,
+      explanation: explanation ?? this.explanation,
+      reference: reference ?? this.reference,
+      isActive: isActive ?? this.isActive,
+      isBookmarked: isBookmarked ?? this.isBookmarked,
+    );
+  }
+
+  factory Question.fromMap(Map<String, Object?> map) {
+    return Question(
+      id: _readRequiredInt(
+        map,
+        const ['question_id', 'id'],
+      ),
+      qualificationId: _readRequiredInt(
+        map,
+        const ['qualification_id'],
+      ),
+      subjectId: _readNullableInt(
+        map,
+        const ['subject_id'],
+      ),
+      subjectName: _readNullableString(
+        map,
+        const ['subject_name'],
+      ),
+      year: _readNullableInt(
+        map,
+        const ['year'],
+      ),
+      session: _readNullableString(
+        map,
+        const ['session'],
+      ),
+      questionNo: _readNullableInt(
+        map,
+        const ['question_no'],
+      ),
+      questionText: _readRequiredString(
+        map,
+        const ['question_text', 'question', 'text'],
+      ),
+      imagePath: _readNullableString(
+        map,
+        const ['image_path'],
+      ),
+      audioPath: _readNullableString(
+        map,
+        const ['audio_path'],
+      ),
+      choices: [
+        _readRequiredString(map, const ['choice_1']),
+        _readRequiredString(map, const ['choice_2']),
+        _readRequiredString(map, const ['choice_3']),
+        _readRequiredString(map, const ['choice_4']),
+      ],
+      correctChoice: _readRequiredInt(
+        map,
+        const ['correct_choice'],
+      ),
+      explanation: _readNullableString(
+            map,
+            const ['explanation'],
+          ) ??
+          '',
+      reference: _readNullableString(
+        map,
+        const ['reference'],
+      ),
+      isActive: (_readNullableInt(
+                map,
+                const ['is_active'],
+              ) ??
+              1) ==
+          1,
+      isBookmarked: (_readNullableInt(
+                map,
+                const ['is_bookmarked'],
+              ) ??
+              0) ==
+          1,
+    );
+  }
+}
+
+Object? _findValue(
+  Map<String, Object?> map,
+  List<String> keys,
+) {
+  for (final key in keys) {
+    if (map.containsKey(key)) {
+      return map[key];
+    }
+  }
+
+  return null;
+}
+
+int _readRequiredInt(
+  Map<String, Object?> map,
+  List<String> keys,
+) {
+  final value = _findValue(map, keys);
+
+  if (value is int) {
+    return value;
+  }
+
+  if (value is num) {
+    return value.toInt();
+  }
+
+  if (value is String) {
+    final parsed = int.tryParse(value);
+
+    if (parsed != null) {
+      return parsed;
+    }
+  }
+
+  throw FormatException(
+    '整数項目を読み込めませんでした: ${keys.join(', ')}',
+  );
+}
+
+int? _readNullableInt(
+  Map<String, Object?> map,
+  List<String> keys,
+) {
+  final value = _findValue(map, keys);
+
+  if (value == null) {
+    return null;
+  }
+
+  if (value is int) {
+    return value;
+  }
+
+  if (value is num) {
+    return value.toInt();
+  }
+
+  if (value is String) {
+    return int.tryParse(value);
+  }
+
+  return null;
+}
+
+String _readRequiredString(
+  Map<String, Object?> map,
+  List<String> keys,
+) {
+  final value = _findValue(map, keys);
+
+  if (value == null) {
+    throw FormatException(
+      '文字列項目を読み込めませんでした: ${keys.join(', ')}',
+    );
+  }
+
+  return value.toString();
+}
+
+String? _readNullableString(
+  Map<String, Object?> map,
+  List<String> keys,
+) {
+  final value = _findValue(map, keys);
+
+  if (value == null) {
+    return null;
+  }
+
+  final text = value.toString().trim();
+
+  if (text.isEmpty) {
+    return null;
+  }
+
+  return text;
+}
+
+
+========== lib\repositories\question_repository.dart ==========
+import '../core/database/questions_database.dart';
+import '../models/question.dart';
+import '../models/subject.dart';
+
+class QuestionRepository {
+  QuestionRepository(this._database);
+
+  final QuestionsDatabase _database;
+
+  Future<List<Subject>> loadSubjects({
+    required int qualificationId,
+  }) async {
+    final rows = await _database.loadSubjects(
+      qualificationId: qualificationId,
+    );
+
+    return rows.map(Subject.fromMap).toList();
+  }
+
+  Future<List<Question>> loadRandomQuestions({
+    required int qualificationId,
+    int limit = 20,
+  }) async {
+    final rows = await _database.loadRandomQuestions(
+      qualificationId: qualificationId,
+      limit: limit,
+    );
+
+    return rows.map(Question.fromMap).toList();
+  }
+
+  Future<List<Question>> loadQuestionsBySubject({
+    required int qualificationId,
+    required int subjectId,
+  }) async {
+    final rows = await _database.loadQuestionsBySubject(
+      qualificationId: qualificationId,
+      subjectId: subjectId,
+    );
+
+    return rows.map(Question.fromMap).toList();
+  }
+
+  Future<List<Question>> loadQuestionsByYear({
+    required int qualificationId,
+    required int year,
+  }) async {
+    final rows = await _database.loadQuestionsByYear(
+      qualificationId: qualificationId,
+      year: year,
+    );
+
+    return rows.map(Question.fromMap).toList();
+  }
+
+  Future<List<Question>> loadBookmarkedQuestions({
+    required int qualificationId,
+  }) async {
+    final rows = await _database.loadBookmarkedQuestions(
+      qualificationId: qualificationId,
+    );
+
+    return rows.map(Question.fromMap).toList();
+  }
+
+  Future<List<int>> loadAvailableYears({
+    required int qualificationId,
+  }) {
+    return _database.loadAvailableYears(
+      qualificationId: qualificationId,
+    );
+  }
+
+  Future<void> setBookmark({
+    required int questionId,
+    required bool isBookmarked,
+  }) {
+    return _database.setBookmark(
+      questionId: questionId,
+      isBookmarked: isBookmarked,
+    );
+  }
+
+  Future<void> updateQuestionResult({
+    required int questionId,
+    required int selectedChoice,
+    required bool isCorrect,
+  }) {
+    return _database.updateQuestionResult(
+      questionId: questionId,
+      selectedChoice: selectedChoice,
+      isCorrect: isCorrect,
+    );
+  }
+}
+
+
+========== lib\core\database\questions_database.dart ==========
+import 'dart:io';
+
+import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
+import 'package:sqflite/sqflite.dart';
+
+import 'database_status.dart';
+
+const _assetDatabasePath = 'assets/data/questions.db';
+const _installedDatabaseName = 'questions.db';
+
+final questionsDatabaseProvider = Provider<QuestionsDatabase>((ref) {
+  return QuestionsDatabase();
+});
+
+final databaseStatusProvider = FutureProvider<DatabaseStatus>((ref) async {
+  final database = ref.watch(questionsDatabaseProvider);
+  return database.inspect();
+});
+
+class QuestionsDatabase {
+  static const String _questionSelect = '''
+    SELECT
+      q.question_id,
+      q.qualification_id,
+      q.subject_id,
+      s.subject_name,
+      q.year,
+      q.session,
+      q.question_no,
+      q.question_text,
+      q.image_path,
+      q.audio_path,
+      q.choice_1,
+      q.choice_2,
+      q.choice_3,
+      q.choice_4,
+      q.correct_choice,
+      q.explanation,
+      q.reference,
+      q.is_active,
+      COALESCE(uqs.is_bookmarked, 0) AS is_bookmarked
+    FROM questions q
+    LEFT JOIN subjects s
+      ON s.subject_id = q.subject_id
+    LEFT JOIN user_question_status uqs
+      ON uqs.question_id = q.question_id
+  ''';
+
+  Future<DatabaseStatus> inspect() async {
+    final installedPath = await _installBundledDatabase();
+
+    if (installedPath == null) {
+      return const DatabaseStatus(
+        availability: DatabaseAvailability.missing,
+        message: 'Database asset was not found.',
+      );
+    }
+
+    Database? db;
+
+    try {
+      db = await openDatabase(installedPath);
+
+      final tableRows = await db.rawQuery(
+        "SELECT name FROM sqlite_master WHERE type = 'table'",
+      );
+
+      final tableNames = tableRows
+          .map((row) => row['name']?.toString())
+          .whereType<String>()
+          .toSet();
+
+      const requiredTables = {
+        'qualifications',
+        'subjects',
+        'questions',
+        'user_question_status',
+      };
+
+      final missingTables = requiredTables.difference(tableNames);
+
+      if (missingTables.isNotEmpty) {
+        return DatabaseStatus(
+          availability: DatabaseAvailability.invalid,
+          message: 'Missing tables: ${missingTables.join(', ')}',
+        );
+      }
+
+      final qualificationCount = await _count(
+        db,
+        'qualifications',
+      );
+
+      final questionCount = await _count(
+        db,
+        'questions',
+      );
+
+      return DatabaseStatus(
+        availability: DatabaseAvailability.ready,
+        message: 'Database loaded.',
+        qualificationCount: qualificationCount,
+        questionCount: questionCount,
+      );
+    } on DatabaseException catch (error) {
+      return DatabaseStatus(
+        availability: DatabaseAvailability.invalid,
+        message: 'SQLite error: $error',
+      );
+    } finally {
+      await db?.close();
+    }
+  }
+
+  Future<List<Map<String, Object?>>> loadQualifications() async {
+    final db = await _openDatabase();
+
+    if (db == null) {
+      return const [];
+    }
+
+    try {
+      return await db.query(
+        'qualifications',
+        where: 'is_active = ?',
+        whereArgs: [1],
+        orderBy: 'sort_order ASC, qualification_id ASC',
+      );
+    } finally {
+      await db.close();
+    }
+  }
+
+  Future<List<Map<String, Object?>>> loadSubjects({
+    required int qualificationId,
+  }) async {
+    final db = await _openDatabase();
+
+    if (db == null) {
+      return const [];
+    }
+
+    try {
+      return await db.query(
+        'subjects',
+        where: 'qualification_id = ? AND is_active = ?',
+        whereArgs: [
+          qualificationId,
+          1,
+        ],
+        orderBy: 'sort_order ASC, subject_id ASC',
+      );
+    } finally {
+      await db.close();
+    }
+  }
+
+  Future<List<Map<String, Object?>>> loadRandomQuestions({
+    required int qualificationId,
+    int limit = 20,
+  }) async {
+    final db = await _openDatabase();
+
+    if (db == null) {
+      return const [];
+    }
+
+    try {
+      return await db.rawQuery(
+        '''
+        $_questionSelect
+        WHERE q.qualification_id = ?
+          AND q.is_active = 1
+        ORDER BY RANDOM()
+        LIMIT ?
+        ''',
+        [
+          qualificationId,
+          limit,
+        ],
+      );
+    } finally {
+      await db.close();
+    }
+  }
+
+  Future<List<Map<String, Object?>>> loadQuestionsBySubject({
+    required int qualificationId,
+    required int subjectId,
+  }) async {
+    final db = await _openDatabase();
+
+    if (db == null) {
+      return const [];
+    }
+
+    try {
+      return await db.rawQuery(
+        '''
+        $_questionSelect
+        WHERE q.qualification_id = ?
+          AND q.subject_id = ?
+          AND q.is_active = 1
+        ORDER BY
+          q.year DESC,
+          q.session ASC,
+          q.question_no ASC,
+          q.question_id ASC
+        ''',
+        [
+          qualificationId,
+          subjectId,
+        ],
+      );
+    } finally {
+      await db.close();
+    }
+  }
+
+  Future<List<Map<String, Object?>>> loadQuestionsByYear({
+    required int qualificationId,
+    required int year,
+  }) async {
+    final db = await _openDatabase();
+
+    if (db == null) {
+      return const [];
+    }
+
+    try {
+      return await db.rawQuery(
+        '''
+        $_questionSelect
+        WHERE q.qualification_id = ?
+          AND q.year = ?
+          AND q.is_active = 1
+        ORDER BY
+          q.session ASC,
+          q.question_no ASC,
+          q.question_id ASC
+        ''',
+        [
+          qualificationId,
+          year,
+        ],
+      );
+    } finally {
+      await db.close();
+    }
+  }
+
+  Future<List<Map<String, Object?>>> loadBookmarkedQuestions({
+    required int qualificationId,
+  }) async {
+    final db = await _openDatabase();
+
+    if (db == null) {
+      return const [];
+    }
+
+    try {
+      return await db.rawQuery(
+        '''
+        $_questionSelect
+        WHERE q.qualification_id = ?
+          AND q.is_active = 1
+          AND uqs.is_bookmarked = 1
+        ORDER BY
+          uqs.last_answered DESC,
+          q.question_id ASC
+        ''',
+        [qualificationId],
+      );
+    } finally {
+      await db.close();
+    }
+  }
+
+  Future<List<int>> loadAvailableYears({
+    required int qualificationId,
+  }) async {
+    final db = await _openDatabase();
+
+    if (db == null) {
+      return const [];
+    }
+
+    try {
+      final rows = await db.rawQuery(
+        '''
+        SELECT DISTINCT year
+        FROM questions
+        WHERE qualification_id = ?
+          AND is_active = 1
+          AND year IS NOT NULL
+        ORDER BY year DESC
+        ''',
+        [qualificationId],
+      );
+
+      return rows.map((row) => row['year']).whereType<int>().toList();
+    } finally {
+      await db.close();
+    }
+  }
+
+  Future<void> setBookmark({
+    required int questionId,
+    required bool isBookmarked,
+  }) async {
+    final db = await _openDatabase();
+
+    if (db == null) {
+      throw StateError('Database could not be opened.');
+    }
+
+    try {
+      await db.transaction((transaction) async {
+        await transaction.insert(
+          'user_question_status',
+          {
+            'question_id': questionId,
+            'is_bookmarked': isBookmarked ? 1 : 0,
+          },
+          conflictAlgorithm: ConflictAlgorithm.ignore,
+        );
+
+        await transaction.update(
+          'user_question_status',
+          {
+            'is_bookmarked': isBookmarked ? 1 : 0,
+          },
+          where: 'question_id = ?',
+          whereArgs: [questionId],
+        );
+      });
+    } finally {
+      await db.close();
+    }
+  }
+
+  Future<void> updateQuestionResult({
+    required int questionId,
+    required int selectedChoice,
+    required bool isCorrect,
+  }) async {
+    final db = await _openDatabase();
+
+    if (db == null) {
+      throw StateError('Database could not be opened.');
+    }
+
+    try {
+      await db.transaction((transaction) async {
+        await transaction.insert(
+          'user_question_status',
+          {
+            'question_id': questionId,
+          },
+          conflictAlgorithm: ConflictAlgorithm.ignore,
+        );
+
+        await transaction.rawUpdate(
+          '''
+          UPDATE user_question_status
+          SET
+            correct_count = correct_count + ?,
+            wrong_count = wrong_count + ?,
+            last_result = ?,
+            last_selected_choice = ?,
+            last_answered = ?
+          WHERE question_id = ?
+          ''',
+          [
+            isCorrect ? 1 : 0,
+            isCorrect ? 0 : 1,
+            isCorrect ? 1 : 0,
+            selectedChoice,
+            DateTime.now().toIso8601String(),
+            questionId,
+          ],
+        );
+      });
+    } finally {
+      await db.close();
+    }
+  }
+
+  Future<int> _count(
+    Database db,
+    String tableName,
+  ) async {
+    final result = await db.rawQuery(
+      'SELECT COUNT(*) AS count FROM $tableName',
+    );
+
+    return Sqflite.firstIntValue(result) ?? 0;
+  }
+
+  Future<Database?> _openDatabase() async {
+    final installedPath = await _installBundledDatabase();
+
+    if (installedPath == null) {
+      return null;
+    }
+
+    return openDatabase(installedPath);
+  }
+
+  Future<String?> _installBundledDatabase() async {
+    final supportDirectory = await getApplicationSupportDirectory();
+
+    final databaseDirectory = Directory(
+      p.join(
+        supportDirectory.path,
+        'database',
+      ),
+    );
+
+    await databaseDirectory.create(
+      recursive: true,
+    );
+
+    final targetFile = File(
+      p.join(
+        databaseDirectory.path,
+        _installedDatabaseName,
+      ),
+    );
+
+    if (await targetFile.exists()) {
+      return targetFile.path;
+    }
+
+    final Uint8List bytes;
+
+    try {
+      final data = await rootBundle.load(_assetDatabasePath);
+
+      bytes = data.buffer.asUint8List(
+        data.offsetInBytes,
+        data.lengthInBytes,
+      );
+    } catch (_) {
+      return null;
+    }
+
+    await targetFile.writeAsBytes(
+      bytes,
+      flush: true,
+    );
+
+    return targetFile.path;
+  }
+}
+
+
+========== DATABASE PATH ==========
+C:\Users\Tak\Desktop\ASApp\pilot_exam_app\assets\data\questions.db
+Exists: True

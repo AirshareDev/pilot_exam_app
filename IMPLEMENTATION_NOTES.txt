@@ -1,0 +1,17 @@
+Version: v0.16 integrated
+
+Implemented:
+- Continue learning card on Home
+- Restores qualification, mode, exact question order, next question index, and accumulated correct count
+- Supports random, subject, past-exam, and bookmark sessions
+- Clears resume data when the session is completed
+- Keeps resume data across ordinary app restarts and code updates
+- Added missing UserDatabase methods used by results and mock-exam screens
+- Removed the unnecessary dart:typed_data import
+
+Execution:
+flutter pub get
+flutter analyze
+flutter run
+
+Uninstall is not required because no bundled question database was changed.
