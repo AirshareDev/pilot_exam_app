@@ -45,7 +45,7 @@ class ChoiceCard extends StatelessWidget {
       shape: RoundedRectangleBorder(
         side: BorderSide(
           color: borderColor,
-          width: isAnswered && (isSelected || isCorrect) ? 2 : 1,
+          width: isSelected || (isAnswered && isCorrect) ? 2 : 1,
         ),
         borderRadius: BorderRadius.circular(12),
       ),

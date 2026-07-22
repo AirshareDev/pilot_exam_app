@@ -41,10 +41,10 @@ class _RandomQuestionScreenState extends ConsumerState<RandomQuestionScreen> {
   late Future<List<Question>> _questionsFuture;
   List<Question> _questions = const <Question>[];
   final ScrollController _scrollController = ScrollController();
+  final ValueNotifier<_AnswerViewState?> _answerState =
+      ValueNotifier<_AnswerViewState?>(null);
 
   int _currentIndex = 0;
-  int? _selectedChoice;
-  bool _isAnswered = false;
   Future<void> _answerWriteQueue = Future<void>.value();
   int _correctCount = 0;
   bool _isSavingBookmark = false;
@@ -62,6 +62,7 @@ class _RandomQuestionScreenState extends ConsumerState<RandomQuestionScreen> {
 
   @override
   void dispose() {
+    _answerState.dispose();
     _scrollController.dispose();
     super.dispose();
   }
@@ -106,6 +107,10 @@ class _RandomQuestionScreenState extends ConsumerState<RandomQuestionScreen> {
 
     if (questions.isNotEmpty) {
       if (_currentIndex >= questions.length) _currentIndex = 0;
+      _answerState.value = _AnswerViewState.initial(
+        correctCount: _correctCount,
+        status: _statusFor(questions[_currentIndex]),
+      );
       await _saveProgress(questions, nextIndex: _currentIndex);
     } else {
       await _clearProgress();
@@ -208,11 +213,8 @@ class _RandomQuestionScreenState extends ConsumerState<RandomQuestionScreen> {
 
   Widget _buildQuestionView(List<Question> questions) {
     final question = questions[_currentIndex];
-    final selectedChoice = _selectedChoice;
     final imagePath = question.imagePath?.trim();
     final hasImage = imagePath != null && imagePath.isNotEmpty;
-    final isCorrect =
-        selectedChoice != null && question.isCorrectChoice(selectedChoice);
 
     return Column(
       children: [
@@ -226,18 +228,20 @@ class _RandomQuestionScreenState extends ConsumerState<RandomQuestionScreen> {
               controller: _scrollController,
               padding: const EdgeInsets.fromLTRB(16, 12, 16, 20),
               children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(
-                      '問題 ${_currentIndex + 1} / ${questions.length}',
-                      style: Theme.of(context).textTheme.titleMedium,
-                    ),
-                    Text(
-                      '正解 $_correctCount',
-                      style: Theme.of(context).textTheme.bodyMedium,
-                    ),
-                  ],
+                ValueListenableBuilder<_AnswerViewState?>(
+                  valueListenable: _answerState,
+                  builder: (context, state, child) {
+                    final currentState = state ??
+                        _AnswerViewState.initial(
+                          correctCount: _correctCount,
+                          status: _statusFor(question),
+                        );
+                    return _QuestionHeader(
+                      currentIndex: _currentIndex,
+                      totalCount: questions.length,
+                      correctCount: currentState.correctCount,
+                    );
+                  },
                 ),
                 if (question.metadataText.isNotEmpty) ...[
                   const SizedBox(height: 6),
@@ -247,118 +251,84 @@ class _RandomQuestionScreenState extends ConsumerState<RandomQuestionScreen> {
                   ),
                 ],
                 const SizedBox(height: 6),
-                _LearningHistorySummary(status: _statusFor(question)),
+                ValueListenableBuilder<_AnswerViewState?>(
+                  valueListenable: _answerState,
+                  builder: (context, state, child) =>
+                      _LearningHistorySummary(
+                    status: state?.status ?? _statusFor(question),
+                  ),
+                ),
                 const SizedBox(height: 14),
-                Card(
-                  margin: EdgeInsets.zero,
-                  child: Padding(
-                    padding: const EdgeInsets.all(14),
-                    child: Text(
-                      question.text,
-                      style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                            fontSize: 15,
-                            height: 1.5,
-                          ),
+                RepaintBoundary(
+                  child: Card(
+                    margin: EdgeInsets.zero,
+                    child: Padding(
+                      padding: const EdgeInsets.all(14),
+                      child: Text(
+                        question.text,
+                        style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                              fontSize: 15,
+                              height: 1.5,
+                            ),
+                      ),
                     ),
                   ),
                 ),
                 if (hasImage) ...[
                   const SizedBox(height: 12),
-                  _QuestionImage(
-                    imagePath: imagePath,
-                    onTap: () => _showImageViewer(imagePath),
+                  RepaintBoundary(
+                    child: _QuestionImage(
+                      imagePath: imagePath,
+                      onTap: () => _showImageViewer(imagePath),
+                    ),
                   ),
                 ],
                 const SizedBox(height: 16),
-                for (var index = 0; index < question.choices.length; index++)
-                  ChoiceCard(
-                    number: index + 1,
-                    text: question.choices[index],
-                    isSelected: selectedChoice == index + 1,
-                    isAnswered: _isAnswered,
-                    isCorrect: question.isCorrectChoice(index + 1),
-                    onTap: () => _answerQuestion(
+                ValueListenableBuilder<_AnswerViewState?>(
+                  valueListenable: _answerState,
+                  builder: (context, state, child) {
+                    final currentState = state ??
+                        _AnswerViewState.initial(
+                          correctCount: _correctCount,
+                          status: _statusFor(question),
+                        );
+                    return _AnswerArea(
                       question: question,
-                      selectedChoice: index + 1,
-                    ),
-                  ),
-                if (_isAnswered) ...[
-                  const SizedBox(height: 8),
-                  Card(
-                    margin: EdgeInsets.zero,
-                    child: Padding(
-                      padding: const EdgeInsets.all(14),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          Row(
-                            children: [
-                              Icon(
-                                isCorrect ? Icons.check_circle : Icons.cancel,
-                              ),
-                              const SizedBox(width: 8),
-                              Text(
-                                isCorrect ? '正解です' : '不正解です',
-                                style: Theme.of(context).textTheme.titleMedium,
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 10),
-                          if (question.isAllCorrect)
-                            const Text(
-                              'この問題は、すべての選択肢を正解として扱います。',
-                              style: TextStyle(fontSize: 14, height: 1.45),
-                            )
-                          else
-                            Text(
-                              _buildCorrectAnswerText(question),
-                              style: const TextStyle(
-                                fontSize: 14,
-                                height: 1.45,
-                              ),
-                            ),
-                          if (question.explanation.isNotEmpty) ...[
-                            const Divider(height: 22),
-                            Text(
-                              '解説',
-                              style: Theme.of(context).textTheme.titleSmall,
-                            ),
-                            const SizedBox(height: 6),
-                            Text(
-                              question.explanation,
-                              style: const TextStyle(
-                                fontSize: 14,
-                                height: 1.5,
-                              ),
-                            ),
-                          ],
-                        ],
+                      state: currentState,
+                      onAnswer: (selectedChoice) => _answerQuestion(
+                        question: question,
+                        selectedChoice: selectedChoice,
                       ),
-                    ),
-                  ),
-                ],
+                    );
+                  },
+                ),
               ],
             ),
           ),
         ),
-        if (_isAnswered)
-          SafeArea(
-            top: false,
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-              child: SizedBox(
-                width: double.infinity,
-                child: FilledButton(
-                  onPressed: () => _goToNextQuestion(questions),
-                  child: Text(
-                    _currentIndex == questions.length - 1
-                        ? '結果を見る'
-                        : '次の問題',
+        ValueListenableBuilder<_AnswerViewState?>(
+          valueListenable: _answerState,
+          builder: (context, state, child) {
+            if (state?.isAnswered != true) return const SizedBox.shrink();
+            return SafeArea(
+              top: false,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+                child: SizedBox(
+                  width: double.infinity,
+                  child: FilledButton(
+                    onPressed: () => _goToNextQuestion(questions),
+                    child: Text(
+                      _currentIndex == questions.length - 1
+                          ? '結果を見る'
+                          : '次の問題',
+                    ),
                   ),
                 ),
               ),
-            ),
-          ),
+            );
+          },
+        ),
       ],
     );
   }
@@ -432,27 +402,30 @@ class _RandomQuestionScreenState extends ConsumerState<RandomQuestionScreen> {
     required Question question,
     required int selectedChoice,
   }) {
-    if (_isAnswered) return;
+    if (_answerState.value?.isAnswered == true) return;
 
     final isCorrect = question.isCorrectChoice(selectedChoice);
     final previous = _statusFor(question);
     final answeredAt = DateTime.now();
 
-    setState(() {
-      _selectedChoice = selectedChoice;
-      _isAnswered = true;
-      if (isCorrect) _correctCount++;
-      _statuses = <String, QuestionLearningStatus>{
-        ..._statuses,
-        question.questionCode: previous.copyWith(
-          correctCount: previous.correctCount + (isCorrect ? 1 : 0),
-          wrongCount: previous.wrongCount + (isCorrect ? 0 : 1),
-          lastResult: isCorrect,
-          lastSelectedChoice: selectedChoice,
-          lastAnswered: answeredAt,
-        ),
-      };
-    });
+    final nextStatus = previous.copyWith(
+      correctCount: previous.correctCount + (isCorrect ? 1 : 0),
+      wrongCount: previous.wrongCount + (isCorrect ? 0 : 1),
+      lastResult: isCorrect,
+      lastSelectedChoice: selectedChoice,
+      lastAnswered: answeredAt,
+    );
+    if (isCorrect) _correctCount++;
+    _statuses = <String, QuestionLearningStatus>{
+      ..._statuses,
+      question.questionCode: nextStatus,
+    };
+    _answerState.value = _AnswerViewState(
+      selectedChoice: selectedChoice,
+      isAnswered: true,
+      correctCount: _correctCount,
+      status: nextStatus,
+    );
 
     _answerWriteQueue = _answerWriteQueue.then((_) => _persistAnswer(
           question: question,
@@ -495,8 +468,10 @@ class _RandomQuestionScreenState extends ConsumerState<RandomQuestionScreen> {
     }
     setState(() {
       _currentIndex++;
-      _selectedChoice = null;
-      _isAnswered = false;
+      _answerState.value = _AnswerViewState.initial(
+        correctCount: _correctCount,
+        status: _statusFor(questions[_currentIndex]),
+      );
     });
     _scrollToTop();
     _precacheUpcomingImages(questions, _currentIndex);
@@ -515,16 +490,6 @@ class _RandomQuestionScreenState extends ConsumerState<RandomQuestionScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (_scrollController.hasClients) _scrollController.jumpTo(0);
     });
-  }
-
-  String _buildCorrectAnswerText(Question question) {
-    final correctChoice = question.correctChoice;
-    if (correctChoice == null ||
-        correctChoice < 1 ||
-        correctChoice > question.choices.length) {
-      return '正解情報が登録されていません。';
-    }
-    return '正解：$correctChoice. ${question.choices[correctChoice - 1]}';
   }
 
   Future<void> _showResult(int total) async {
@@ -572,10 +537,9 @@ class _RandomQuestionScreenState extends ConsumerState<RandomQuestionScreen> {
     if (!mounted) return;
     setState(() {
       _currentIndex = 0;
-      _selectedChoice = null;
-      _isAnswered = false;
       _correctCount = 0;
       _statuses = const <String, QuestionLearningStatus>{};
+      _answerState.value = null;
       _questionsFuture = _loadQuestions();
     });
     _scrollToTop();
@@ -629,6 +593,172 @@ class _RandomQuestionScreenState extends ConsumerState<RandomQuestionScreen> {
   void _retry() => _restart();
 }
 
+
+class _AnswerViewState {
+  const _AnswerViewState({
+    required this.selectedChoice,
+    required this.isAnswered,
+    required this.correctCount,
+    required this.status,
+  });
+
+  factory _AnswerViewState.initial({
+    required int correctCount,
+    required QuestionLearningStatus status,
+  }) {
+    return _AnswerViewState(
+      selectedChoice: null,
+      isAnswered: false,
+      correctCount: correctCount,
+      status: status,
+    );
+  }
+
+  final int? selectedChoice;
+  final bool isAnswered;
+  final int correctCount;
+  final QuestionLearningStatus status;
+}
+
+class _QuestionHeader extends StatelessWidget {
+  const _QuestionHeader({
+    required this.currentIndex,
+    required this.totalCount,
+    required this.correctCount,
+  });
+
+  final int currentIndex;
+  final int totalCount;
+  final int correctCount;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Text(
+          '問題 ${currentIndex + 1} / $totalCount',
+          style: Theme.of(context).textTheme.titleMedium,
+        ),
+        Text(
+          '正解 $correctCount',
+          style: Theme.of(context).textTheme.bodyMedium,
+        ),
+      ],
+    );
+  }
+}
+
+class _AnswerArea extends StatelessWidget {
+  const _AnswerArea({
+    required this.question,
+    required this.state,
+    required this.onAnswer,
+  });
+
+  final Question question;
+  final _AnswerViewState state;
+  final ValueChanged<int> onAnswer;
+
+  @override
+  Widget build(BuildContext context) {
+    final selectedChoice = state.selectedChoice;
+    final isCorrect = selectedChoice != null &&
+        question.isCorrectChoice(selectedChoice);
+
+    return Column(
+      children: [
+        for (var index = 0; index < question.choices.length; index++)
+          RepaintBoundary(
+            key: ValueKey('${question.questionCode}-${index + 1}'),
+            child: ChoiceCard(
+              number: index + 1,
+              text: question.choices[index],
+              isSelected: selectedChoice == index + 1,
+              isAnswered: state.isAnswered,
+              isCorrect: question.isCorrectChoice(index + 1),
+              onTap: () => onAnswer(index + 1),
+            ),
+          ),
+        if (state.isAnswered) ...[
+          const SizedBox(height: 8),
+          _AnswerResultCard(
+            question: question,
+            isCorrect: isCorrect,
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+class _AnswerResultCard extends StatelessWidget {
+  const _AnswerResultCard({
+    required this.question,
+    required this.isCorrect,
+  });
+
+  final Question question;
+  final bool isCorrect;
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      margin: EdgeInsets.zero,
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                Icon(isCorrect ? Icons.check_circle : Icons.cancel),
+                const SizedBox(width: 8),
+                Text(
+                  isCorrect ? '正解です' : '不正解です',
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            if (question.isAllCorrect)
+              const Text(
+                'この問題は、すべての選択肢を正解として扱います。',
+                style: TextStyle(fontSize: 14, height: 1.45),
+              )
+            else
+              Text(
+                _correctAnswerText(question),
+                style: const TextStyle(fontSize: 14, height: 1.45),
+              ),
+            if (question.explanation.isNotEmpty) ...[
+              const Divider(height: 22),
+              Text(
+                '解説',
+                style: Theme.of(context).textTheme.titleSmall,
+              ),
+              const SizedBox(height: 6),
+              Text(
+                question.explanation,
+                style: const TextStyle(fontSize: 14, height: 1.5),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  static String _correctAnswerText(Question question) {
+    final correctChoice = question.correctChoice;
+    if (correctChoice == null ||
+        correctChoice < 1 ||
+        correctChoice > question.choices.length) {
+      return '正解情報が登録されていません。';
+    }
+    return '正解：$correctChoice. ${question.choices[correctChoice - 1]}';
+  }
+}
 
 class _LearningHistorySummary extends StatelessWidget {
   const _LearningHistorySummary({required this.status});
