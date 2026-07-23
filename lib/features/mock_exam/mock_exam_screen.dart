@@ -51,6 +51,7 @@ class MockExamScreen extends ConsumerStatefulWidget {
 
 class _MockExamScreenState extends ConsumerState<MockExamScreen> {
   Timer? _timer;
+  Timer? _autoAdvanceTimer;
   Duration _remaining = MockExamConfig.examDuration;
   DateTime? _startedAt;
   List<Subject> _subjects = const <Subject>[];
@@ -219,6 +220,7 @@ class _MockExamScreenState extends ConsumerState<MockExamScreen> {
   @override
   void dispose() {
     _timer?.cancel();
+    _autoAdvanceTimer?.cancel();
     _questionScrollController.dispose();
     super.dispose();
   }
@@ -411,6 +413,7 @@ class _MockExamScreenState extends ConsumerState<MockExamScreen> {
   }
 
   Future<void> _showQuestionList() async {
+    _autoAdvanceTimer?.cancel();
     final questions = _questions ?? const <Question>[];
     if (questions.isEmpty) return;
 
@@ -710,6 +713,7 @@ class _MockExamScreenState extends ConsumerState<MockExamScreen> {
   }
 
   Future<void> _submit({bool force = false}) async {
+    _autoAdvanceTimer?.cancel();
     if (_submitting) return;
     final questions = _questions;
     if (questions == null || questions.isEmpty) return;
@@ -1373,14 +1377,21 @@ class _MockExamScreenState extends ConsumerState<MockExamScreen> {
                   enabled: !_submitting,
                   onTap: () {
                     if (_submitting) return;
-                    setState(() => _answers[_currentIndex] = i + 1);
+                    _autoAdvanceTimer?.cancel();
+                    final answeredIndex = _currentIndex;
+                    setState(() => _answers[answeredIndex] = i + 1);
                     final settings = ref.read(appSettingsProvider);
                     if (settings.advanceAfterMockAnswer &&
-                        _currentIndex < questions.length - 1) {
-                      Future<void>.delayed(
+                        answeredIndex < questions.length - 1) {
+                      _autoAdvanceTimer = Timer(
                         const Duration(milliseconds: 600),
                         () {
-                          if (!mounted || _submitting) return;
+                          if (!mounted ||
+                              _submitting ||
+                              _currentIndex != answeredIndex ||
+                              _currentIndex >= questions.length - 1) {
+                            return;
+                          }
                           setState(() => _currentIndex++);
                           _scrollMockQuestionToTop();
                         },
@@ -1402,6 +1413,8 @@ class _MockExamScreenState extends ConsumerState<MockExamScreen> {
                     onPressed: _currentIndex == 0 || _submitting
                         ? null
                         : () {
+                            _autoAdvanceTimer?.cancel();
+                            if (_currentIndex <= 0) return;
                             setState(() => _currentIndex--);
                             _scrollMockQuestionToTop();
                           },
@@ -1427,6 +1440,10 @@ class _MockExamScreenState extends ConsumerState<MockExamScreen> {
                           onPressed: _submitting
                               ? null
                               : () {
+                                  _autoAdvanceTimer?.cancel();
+                                  if (_currentIndex >= questions.length - 1) {
+                                    return;
+                                  }
                                   final showNextSubject =
                                       _isNextQuestionNewSubject();
                                   setState(() {
