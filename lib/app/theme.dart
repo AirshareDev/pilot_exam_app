@@ -19,6 +19,12 @@ ThemeData buildAppTheme() {
     useMaterial3: true,
     colorScheme: scheme,
     scaffoldBackgroundColor: AppColors.background,
+    fontFamily: 'Inter',
+    fontFamilyFallback: const <String>[
+      'Noto Sans JP',
+      'Noto Sans CJK JP',
+      'sans-serif',
+    ],
     appBarTheme: const AppBarTheme(
       backgroundColor: AppColors.navy,
       foregroundColor: Colors.white,

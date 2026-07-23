@@ -2,9 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../design/app_app_bar.dart';
+import '../../design/app_card.dart';
+import '../../design/app_colors.dart';
 import '../../models/learning_session_progress.dart';
 import '../../models/qualification.dart';
-import '../../design/app_app_bar.dart';
 import '../learning_progress/learning_session_progress_provider.dart';
 import '../learning_progress/resume_guard.dart';
 import '../qualifications/qualification_provider.dart';
@@ -18,7 +20,6 @@ class HomeScreen extends ConsumerWidget {
     final qualifications = ref.watch(qualificationsProvider);
     final selectedQualificationId = ref.watch(selectedQualificationIdProvider);
     final learningProgress = ref.watch(learningSessionProgressProvider);
-
     final selectedQualification = _resolveSelectedQualification(
       qualifications,
       selectedQualificationId,
@@ -44,7 +45,7 @@ class HomeScreen extends ConsumerWidget {
           },
           child: ListView(
             physics: const AlwaysScrollableScrollPhysics(),
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.fromLTRB(16, 20, 16, 28),
             children: [
               _SelectedQualificationCard(
                 qualifications: qualifications,
@@ -53,7 +54,7 @@ class HomeScreen extends ConsumerWidget {
               ),
               learningProgress.when(
                 loading: () => const SizedBox.shrink(),
-                error: (error, stackTrace) => const SizedBox.shrink(),
+                error: (_, __) => const SizedBox.shrink(),
                 data: (progress) {
                   if (progress == null) return const SizedBox.shrink();
                   final qualification = _findQualificationByProgress(
@@ -62,7 +63,7 @@ class HomeScreen extends ConsumerWidget {
                   );
                   if (qualification == null) return const SizedBox.shrink();
                   return Padding(
-                    padding: const EdgeInsets.only(top: 12),
+                    padding: const EdgeInsets.only(top: 14),
                     child: _ContinueLearningCard(
                       progress: progress,
                       onTap: () async {
@@ -79,35 +80,54 @@ class HomeScreen extends ConsumerWidget {
                   );
                 },
               ),
-              const SizedBox(height: 24),
-              Text(
-                '学習メニュー',
-                style: Theme.of(context).textTheme.titleLarge,
+              const SizedBox(height: 28),
+              const _SectionTitle(
+                title: '学習メニュー',
+                subtitle: '学習方法を選択してください',
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: 14),
               _LearningMenuGrid(
                 selectedQualification: selectedQualification,
                 ref: ref,
               ),
-              const SizedBox(height: 28),
-              Text(
-                '学習記録',
-                style: Theme.of(context).textTheme.titleLarge,
+              const SizedBox(height: 30),
+              const _SectionTitle(
+                title: '学習記録',
+                subtitle: '成績や復習対象を確認できます',
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: 14),
               _RecordMenuRow(
                 onResults: () => context.push('/results'),
                 onIncorrectQuestions: () => context.push('/review'),
                 onBookmarks: () => context.push('/bookmarks'),
               ),
-              const SizedBox(height: 24),
             ],
           ),
         ),
       ),
     );
   }
+}
 
+class _SectionTitle extends StatelessWidget {
+  const _SectionTitle({required this.title, required this.subtitle});
+  final String title;
+  final String subtitle;
+
+  @override
+  Widget build(BuildContext context) => Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(title, style: Theme.of(context).textTheme.titleLarge),
+          const SizedBox(height: 3),
+          Text(
+            subtitle,
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: AppColors.textSecondary,
+                ),
+          ),
+        ],
+      );
 }
 
 class _SelectedQualificationCard extends StatelessWidget {
@@ -123,80 +143,85 @@ class _SelectedQualificationCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Card(
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.all(18),
-          child: qualifications.when(
+    return AppCard(
+      onTap: onTap,
+      padding: EdgeInsets.zero,
+      child: Container(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [Color(0xFF123D73), Color(0xFF1D5799)],
+          ),
+        ),
+        padding: const EdgeInsets.all(20),
+        child: qualifications.when(
+          loading: () => const _QualificationLoadingView(),
+          error: (error, _) => _QualificationErrorView(message: error.toString()),
+          data: (items) => selectedQualificationId.when(
             loading: () => const _QualificationLoadingView(),
-            error: (error, stackTrace) => _QualificationErrorView(
-              message: error.toString(),
-            ),
-            data: (items) {
-              return selectedQualificationId.when(
-                loading: () => const _QualificationLoadingView(),
-                error: (error, stackTrace) => _QualificationErrorView(
-                  message: error.toString(),
-                ),
-                data: (selectedId) {
-                  final selected = _findQualification(
-                    items,
-                    selectedId,
-                  );
-
-                  if (selected == null) {
-                    return const _QualificationErrorView(
-                      message: '選択中の資格情報が見つかりません。',
-                    );
-                  }
-
-                  return Row(
-                    children: [
-                      CircleAvatar(
-                        radius: 26,
-                        child: Icon(
-                          selected.id == defaultQualificationId
-                              ? Icons.menu_book_outlined
-                              : Icons.flight_outlined,
-                        ),
+            error: (error, _) => _QualificationErrorView(message: error.toString()),
+            data: (selectedId) {
+              final selected = _findQualification(items, selectedId);
+              if (selected == null) {
+                return const _QualificationErrorView(
+                  message: '選択中の資格情報が見つかりません。',
+                );
+              }
+              return Row(
+                children: [
+                  Container(
+                    width: 56,
+                    height: 56,
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.14),
+                      shape: BoxShape.circle,
+                      border: Border.all(
+                        color: Colors.white.withValues(alpha: 0.28),
                       ),
-                      const SizedBox(width: 16),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              '選択中の資格',
-                              style: Theme.of(context).textTheme.labelLarge,
-                            ),
-                            const SizedBox(height: 5),
-                            Text(
-                              selected.name,
-                              style: Theme.of(context).textTheme.titleMedium,
-                            ),
-                            if (selected.description.isNotEmpty) ...[
-                              const SizedBox(height: 4),
-                              Text(
-                                selected.description,
-                                maxLines: 2,
-                                overflow: TextOverflow.ellipsis,
-                                style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                    child: const Icon(
+                      Icons.flight_takeoff_rounded,
+                      color: Colors.white,
+                      size: 29,
+                    ),
+                  ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          '選択中の資格',
+                          style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                                color: Colors.white70,
                               ),
-                            ],
-                            if (selected.id == defaultQualificationId) ...[
-                              const SizedBox(height: 8),
-                              const _FreeLabel(),
-                            ],
-                          ],
                         ),
-                      ),
-                      const SizedBox(width: 8),
-                      const Icon(Icons.expand_more),
-                    ],
-                  );
-                },
+                        const SizedBox(height: 5),
+                        Text(
+                          selected.name,
+                          style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                                color: Colors.white,
+                                fontWeight: FontWeight.w700,
+                              ),
+                        ),
+                        if (selected.description.isNotEmpty) ...[
+                          const SizedBox(height: 4),
+                          Text(
+                            selected.description,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                  color: Colors.white70,
+                                ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  const Icon(Icons.chevron_right_rounded, color: Colors.white),
+                ],
               );
             },
           ),
@@ -208,145 +233,82 @@ class _SelectedQualificationCard extends StatelessWidget {
 
 class _QualificationLoadingView extends StatelessWidget {
   const _QualificationLoadingView();
-
   @override
-  Widget build(BuildContext context) {
-    return const Row(
-      children: [
-        SizedBox.square(
-          dimension: 22,
-          child: CircularProgressIndicator(strokeWidth: 2),
-        ),
-        SizedBox(width: 14),
-        Text('資格情報を読み込んでいます。'),
-      ],
-    );
-  }
+  Widget build(BuildContext context) => const Row(
+        children: [
+          SizedBox.square(
+            dimension: 22,
+            child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+          ),
+          SizedBox(width: 14),
+          Text('資格情報を読み込んでいます。', style: TextStyle(color: Colors.white)),
+        ],
+      );
 }
 
 class _QualificationErrorView extends StatelessWidget {
-  const _QualificationErrorView({
-    required this.message,
-  });
-
+  const _QualificationErrorView({required this.message});
   final String message;
-
   @override
-  Widget build(BuildContext context) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Icon(Icons.error_outline),
-        const SizedBox(width: 12),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text('資格情報を読み込めませんでした。'),
-              const SizedBox(height: 4),
-              Text(
-                message,
-                style: Theme.of(context).textTheme.bodySmall,
-              ),
-            ],
+  Widget build(BuildContext context) => Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Icon(Icons.error_outline, color: Colors.white),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(message, style: const TextStyle(color: Colors.white)),
           ),
-        ),
-        const Icon(Icons.chevron_right),
-      ],
-    );
-  }
-}
-
-class _FreeLabel extends StatelessWidget {
-  const _FreeLabel();
-
-  @override
-  Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: colorScheme.primaryContainer,
-        borderRadius: BorderRadius.circular(20),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(
-          horizontal: 10,
-          vertical: 3,
-        ),
-        child: Text(
-          '無料',
-          style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                color: colorScheme.onPrimaryContainer,
-              ),
-        ),
-      ),
-    );
-  }
+          const Icon(Icons.chevron_right, color: Colors.white),
+        ],
+      );
 }
 
 class _ContinueLearningCard extends StatelessWidget {
-  const _ContinueLearningCard({
-    required this.progress,
-    required this.onTap,
-  });
-
+  const _ContinueLearningCard({required this.progress, required this.onTap});
   final LearningSessionProgress progress;
   final VoidCallback onTap;
 
   @override
-  Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-    return Card(
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
+  Widget build(BuildContext context) => AppCard(
         onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Row(
-            children: [
-              CircleAvatar(
-                backgroundColor: colorScheme.secondaryContainer,
-                foregroundColor: colorScheme.onSecondaryContainer,
-                child: const Icon(Icons.play_arrow_rounded),
+        padding: const EdgeInsets.all(18),
+        child: Row(
+          children: [
+            Container(
+              width: 50,
+              height: 50,
+              decoration: BoxDecoration(
+                color: AppColors.green.withValues(alpha: 0.12),
+                shape: BoxShape.circle,
               ),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      '続きから学習',
-                      style: Theme.of(context).textTheme.titleMedium,
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      progress.qualificationName,
-                      style: Theme.of(context).textTheme.bodyMedium,
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      '${progress.modeLabel}　問題 ${progress.progressLabel}',
-                      style: Theme.of(context).textTheme.bodySmall,
-                    ),
-                  ],
-                ),
+              child: const Icon(Icons.play_arrow_rounded, color: AppColors.green, size: 30),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('続きから学習', style: Theme.of(context).textTheme.titleMedium),
+                  const SizedBox(height: 4),
+                  Text(progress.qualificationName, style: Theme.of(context).textTheme.bodyMedium),
+                  const SizedBox(height: 2),
+                  Text(
+                    '${progress.modeLabel}　問題 ${progress.progressLabel}',
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: AppColors.textSecondary,
+                        ),
+                  ),
+                ],
               ),
-              const Icon(Icons.chevron_right),
-            ],
-          ),
+            ),
+            const Icon(Icons.chevron_right_rounded, color: AppColors.textSecondary),
+          ],
         ),
-      ),
-    );
-  }
+      );
 }
 
 class _LearningMenuGrid extends StatelessWidget {
-  const _LearningMenuGrid({
-    required this.selectedQualification,
-    required this.ref,
-  });
-
+  const _LearningMenuGrid({required this.selectedQualification, required this.ref});
   final Qualification? selectedQualification;
   final WidgetRef ref;
 
@@ -354,18 +316,17 @@ class _LearningMenuGrid extends StatelessWidget {
   Widget build(BuildContext context) {
     final items = [
       _MenuGridItem(
-        icon: Icons.shuffle,
-        label: 'ランダム\n一問一答',
+        icon: Icons.shuffle_rounded,
+        label: 'ランダム一問一答',
+        description: '全問題からランダム出題',
+        color: AppColors.blue,
         onTap: selectedQualification == null
             ? null
             : () async {
-                if (!await confirmDiscardInterruptedMockExam(context, ref)) {
-                  return;
-                }
+                if (!await confirmDiscardInterruptedMockExam(context, ref)) return;
                 if (!context.mounted) return;
                 context.push(
-                  '/qualifications/'
-                  '${selectedQualification!.id}/random',
+                  '/qualifications/${selectedQualification!.id}/random',
                   extra: selectedQualification,
                 );
               },
@@ -373,20 +334,24 @@ class _LearningMenuGrid extends StatelessWidget {
       _MenuGridItem(
         icon: Icons.category_outlined,
         label: '科目別',
+        description: '苦手科目を集中学習',
+        color: AppColors.orange,
         onTap: () => context.push('/quick-practice'),
       ),
       _MenuGridItem(
-        icon: Icons.history,
-        label: '年度別\n過去問',
+        icon: Icons.calendar_month_outlined,
+        label: '年度別過去問',
+        description: '年度・期ごとに演習',
+        color: AppColors.purple,
         onTap: () => context.push('/past-exams'),
       ),
       _MenuGridItem(
         icon: Icons.timer_outlined,
         label: '模擬試験',
+        description: '本番形式で実力確認',
+        color: AppColors.red,
         onTap: () async {
-          if (!await confirmDiscardInterruptedMockExam(context, ref)) {
-                  return;
-                }
+          if (!await confirmDiscardInterruptedMockExam(context, ref)) return;
           if (context.mounted) context.push('/mock-exam');
         },
       ),
@@ -400,60 +365,49 @@ class _LearningMenuGrid extends StatelessWidget {
         crossAxisCount: 2,
         crossAxisSpacing: 12,
         mainAxisSpacing: 12,
-        childAspectRatio: 1.25,
+        childAspectRatio: 1.06,
       ),
-      itemBuilder: (context, index) {
-        final item = items[index];
-
-        return _MenuGridCard(
-          icon: item.icon,
-          label: item.label,
-          onTap: item.onTap,
-        );
-      },
+      itemBuilder: (context, index) => _MenuGridCard(item: items[index]),
     );
   }
 }
 
 class _MenuGridCard extends StatelessWidget {
-  const _MenuGridCard({
-    required this.icon,
-    required this.label,
-    required this.onTap,
-  });
-
-  final IconData icon;
-  final String label;
-  final VoidCallback? onTap;
+  const _MenuGridCard({required this.item});
+  final _MenuGridItem item;
 
   @override
   Widget build(BuildContext context) {
-    final enabled = onTap != null;
-
-    return Card(
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Opacity(
-            opacity: enabled ? 1 : 0.45,
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(
-                  icon,
-                  size: 36,
-                ),
-                const SizedBox(height: 12),
-                Text(
-                  label,
-                  textAlign: TextAlign.center,
-                  style: Theme.of(context).textTheme.titleMedium,
-                ),
-              ],
+    final enabled = item.onTap != null;
+    return AppCard(
+      onTap: item.onTap,
+      padding: const EdgeInsets.all(16),
+      child: Opacity(
+        opacity: enabled ? 1 : 0.45,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              width: 44,
+              height: 44,
+              decoration: BoxDecoration(
+                color: item.color.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(13),
+              ),
+              child: Icon(item.icon, color: item.color, size: 25),
             ),
-          ),
+            const Spacer(),
+            Text(item.label, style: Theme.of(context).textTheme.titleSmall),
+            const SizedBox(height: 4),
+            Text(
+              item.description,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: AppColors.textSecondary,
+                  ),
+            ),
+          ],
         ),
       ),
     );
@@ -466,134 +420,78 @@ class _RecordMenuRow extends StatelessWidget {
     required this.onIncorrectQuestions,
     required this.onBookmarks,
   });
-
   final VoidCallback onResults;
   final VoidCallback onIncorrectQuestions;
   final VoidCallback onBookmarks;
 
   @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Expanded(
-          child: _RecordMenuCard(
-            icon: Icons.insights_outlined,
-            label: '成績',
-            onTap: onResults,
-          ),
-        ),
-        const SizedBox(width: 10),
-        Expanded(
-          child: _RecordMenuCard(
-            icon: Icons.refresh,
-            label: '復習',
-            onTap: onIncorrectQuestions,
-          ),
-        ),
-        const SizedBox(width: 10),
-        Expanded(
-          child: _RecordMenuCard(
-            icon: Icons.bookmark_outline,
-            label: '保存',
-            onTap: onBookmarks,
-          ),
-        ),
-      ],
-    );
-  }
+  Widget build(BuildContext context) => Row(
+        children: [
+          Expanded(child: _RecordMenuCard(icon: Icons.insights_outlined, label: '成績', color: AppColors.blue, onTap: onResults)),
+          const SizedBox(width: 10),
+          Expanded(child: _RecordMenuCard(icon: Icons.replay_rounded, label: '復習', color: AppColors.orange, onTap: onIncorrectQuestions)),
+          const SizedBox(width: 10),
+          Expanded(child: _RecordMenuCard(icon: Icons.bookmark_outline_rounded, label: '保存', color: AppColors.teal, onTap: onBookmarks)),
+        ],
+      );
 }
 
 class _RecordMenuCard extends StatelessWidget {
-  const _RecordMenuCard({
-    required this.icon,
-    required this.label,
-    required this.onTap,
-  });
-
+  const _RecordMenuCard({required this.icon, required this.label, required this.color, required this.onTap});
   final IconData icon;
   final String label;
+  final Color color;
   final VoidCallback onTap;
 
   @override
-  Widget build(BuildContext context) {
-    return Card(
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
+  Widget build(BuildContext context) => AppCard(
         onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(
-            horizontal: 8,
-            vertical: 18,
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(
-                icon,
-                size: 30,
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 18),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 42,
+              height: 42,
+              decoration: BoxDecoration(
+                color: color.withValues(alpha: 0.11),
+                shape: BoxShape.circle,
               ),
-              const SizedBox(height: 8),
-              Text(
-                label,
-                textAlign: TextAlign.center,
-                style: Theme.of(context).textTheme.titleSmall,
-              ),
-            ],
-          ),
+              child: Icon(icon, size: 23, color: color),
+            ),
+            const SizedBox(height: 9),
+            Text(label, style: Theme.of(context).textTheme.titleSmall),
+          ],
         ),
-      ),
-    );
-  }
+      );
 }
 
 class _MenuGridItem {
-  const _MenuGridItem({
-    required this.icon,
-    required this.label,
-    required this.onTap,
-  });
-
+  const _MenuGridItem({required this.icon, required this.label, required this.description, required this.color, required this.onTap});
   final IconData icon;
   final String label;
+  final String description;
+  final Color color;
   final VoidCallback? onTap;
 }
 
-Qualification? _resolveSelectedQualification(
-  AsyncValue<List<Qualification>> qualifications,
-  AsyncValue<int> selectedQualificationId,
-) {
+Qualification? _resolveSelectedQualification(AsyncValue<List<Qualification>> qualifications, AsyncValue<int> selectedQualificationId) {
   final items = qualifications.valueOrNull;
   final selectedId = selectedQualificationId.valueOrNull;
-
-  if (items == null || selectedId == null) {
-    return null;
-  }
-
+  if (items == null || selectedId == null) return null;
   return _findQualification(items, selectedId);
 }
 
-Qualification? _findQualificationByProgress(
-  List<Qualification> qualifications,
-  LearningSessionProgress progress,
-) {
+Qualification? _findQualificationByProgress(List<Qualification> qualifications, LearningSessionProgress progress) {
   for (final qualification in qualifications) {
-    if (qualification.id == progress.qualificationId ||
-        qualification.code == progress.qualificationCode) {
-      return qualification;
-    }
+    if (qualification.id == progress.qualificationId || qualification.code == progress.qualificationCode) return qualification;
   }
   return null;
 }
 
-Qualification? _findQualification(
-  List<Qualification> qualifications,
-  int qualificationId,
-) {
+Qualification? _findQualification(List<Qualification> qualifications, int qualificationId) {
   for (final qualification in qualifications) {
-    if (qualification.id == qualificationId) {
-      return qualification;
-    }
+    if (qualification.id == qualificationId) return qualification;
   }
-
   return null;
 }

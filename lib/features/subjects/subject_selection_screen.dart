@@ -21,6 +21,7 @@ class SubjectSelectionScreen extends ConsumerWidget {
         leading: const AppHomeButton(),
         automaticallyImplyLeading: false,
         title: const Text('科目別'),
+        actions: const [AppHomeActionButton()],
         flexibleSpace: const AppBarBackground(),
       ),
       body: selectedQualification.when(

@@ -163,6 +163,7 @@ class _RouteErrorScreen extends StatelessWidget {
         leading: const AppHomeButton(),
         automaticallyImplyLeading: false,
         title: const Text('画面を開けません'),
+        actions: const [AppHomeActionButton()],
         flexibleSpace: const AppBarBackground(),
       ), 
       body: Center(

@@ -415,19 +415,19 @@ class _MockExamScreenState extends ConsumerState<MockExamScreen> {
           final isAnswered = _answers.containsKey(index);
 
           final backgroundColor = isCurrent
-              ? colorScheme.primary
+              ? const Color(0xFFFFF7E8)
               : isAnswered
-                  ? colorScheme.primaryContainer
+                  ? const Color(0xFFEAF2FF)
                   : colorScheme.surface;
           final foregroundColor = isCurrent
-              ? colorScheme.onPrimary
-              : isAnswered
-                  ? colorScheme.onPrimaryContainer
-                  : colorScheme.onSurface;
-          final borderColor = isCurrent
-              ? colorScheme.primary
+              ? const Color(0xFFB45309)
               : isAnswered
                   ? colorScheme.primary
+                  : colorScheme.onSurface;
+          final borderColor = isCurrent
+              ? const Color(0xFFF59E0B)
+              : isAnswered
+                  ? const Color(0xFF8CB8F5)
                   : colorScheme.outlineVariant;
 
           return InkWell(
@@ -441,7 +441,7 @@ class _MockExamScreenState extends ConsumerState<MockExamScreen> {
                 color: backgroundColor,
                 border: Border.all(
                   color: borderColor,
-                  width: isCurrent ? 2 : 1,
+                  width: isCurrent ? 2.5 : 1,
                 ),
                 borderRadius: BorderRadius.circular(8),
               ),
@@ -515,14 +515,14 @@ class _MockExamScreenState extends ConsumerState<MockExamScreen> {
                     ),
                     const SizedBox(width: 16),
                     _QuestionListLegend(
-                      color: colorScheme.primaryContainer,
-                      borderColor: colorScheme.primary,
+                      color: const Color(0xFFEAF2FF),
+                      borderColor: const Color(0xFF8CB8F5),
                       label: '回答済み',
                     ),
                     const SizedBox(width: 16),
                     _QuestionListLegend(
-                      color: colorScheme.primary,
-                      borderColor: colorScheme.primary,
+                      color: const Color(0xFFFFF7E8),
+                      borderColor: const Color(0xFFF59E0B),
                       label: '現在',
                     ),
                   ],
@@ -810,12 +810,23 @@ class _MockExamScreenState extends ConsumerState<MockExamScreen> {
                     ),
                   )
                 else if (mode == _MockExamMode.practice)
-                  TextButton(
-                    onPressed: _savingProgress ? null : _interruptPractice,
-                    child: Text(_savingProgress ? '保存中…' : '中断'),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    child: OutlinedButton.icon(
+                      onPressed: _savingProgress ? null : _interruptPractice,
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: Colors.white,
+                        side: BorderSide(color: Colors.white.withValues(alpha: 0.72)),
+                        minimumSize: const Size(0, 40),
+                        padding: const EdgeInsets.symmetric(horizontal: 12),
+                      ),
+                      icon: const Icon(Icons.pause_circle_outline_rounded, size: 18),
+                      label: Text(_savingProgress ? '保存中…' : '中断'),
+                    ),
                   ),
+                const AppHomeActionButton(),
               ]
-            : null,
+            : const [AppHomeActionButton()],
       ),
       body: _buildBody(context),
     );
@@ -1398,6 +1409,7 @@ class MockExamResultScreen extends StatelessWidget {
         leading: const AppHomeButton(),
         automaticallyImplyLeading: false,
         title: const Text('模擬試験結果'),
+        actions: const [AppHomeActionButton()],
         flexibleSpace: const AppBarBackground(),
       ),
       body: ListView(
@@ -1569,6 +1581,7 @@ class _MockExamQuestionDetailScreen extends StatelessWidget {
         leading: const AppHomeButton(),
         automaticallyImplyLeading: false,
         title: Text('問題 $questionNumber'),
+        actions: const [AppHomeActionButton()],
         flexibleSpace: const AppBarBackground(),
       ),
       body: ListView(
@@ -1740,6 +1753,7 @@ class _WrongAnswerReviewScreenState extends State<_WrongAnswerReviewScreen> {
         leading: const AppHomeButton(),
         automaticallyImplyLeading: false,
         title: const Text('間違えた問題の復習'),
+        actions: const [AppHomeActionButton()],
         flexibleSpace: const AppBarBackground(),
       ),
       body: Column(

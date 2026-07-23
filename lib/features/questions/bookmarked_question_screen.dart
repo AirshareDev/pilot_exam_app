@@ -78,6 +78,7 @@ class _SelectionErrorScreen extends StatelessWidget {
         leading: const AppHomeButton(),
         automaticallyImplyLeading: false,
         title: const Text('ブックマーク'),
+        actions: const [AppHomeActionButton()],
         flexibleSpace: const AppBarBackground(),
       ),
       body: Center(

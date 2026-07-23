@@ -7,6 +7,7 @@ class AppPage extends StatelessWidget {
     required this.title,
     required this.body,
     this.showBackButton = true,
+    this.showHomeButton = true,
     this.actions = const <Widget>[],
     super.key,
   });
@@ -14,6 +15,7 @@ class AppPage extends StatelessWidget {
   final String title;
   final Widget body;
   final bool showBackButton;
+  final bool showHomeButton;
   final List<Widget> actions;
 
   @override
@@ -24,7 +26,10 @@ class AppPage extends StatelessWidget {
           leading: showBackButton ? const AppHomeButton() : null,
           automaticallyImplyLeading: false,
           title: Text(title),
-          actions: actions,
+          actions: [
+            ...actions,
+            if (showHomeButton) const AppHomeActionButton(),
+          ],
         ),
       ),
       body: SafeArea(child: body),
