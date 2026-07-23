@@ -135,6 +135,10 @@ final GoRouter appRouter = GoRouter(
       builder: (context, state) => const ResultsScreen(),
     ),
     GoRoute(
+      path: '/review',
+      builder: (context, state) => const ResultsScreen(historyOnly: true),
+    ),
+    GoRoute(
       path: '/settings',
       builder: (context, state) => const FeaturePlaceholderScreen(
         title: '設定',

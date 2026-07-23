@@ -81,20 +81,50 @@ class ExamSubjectResultInput {
 
 class ExamResultHistory {
   const ExamResultHistory({
+    required this.id,
+    required this.startedAt,
     required this.completedAt,
     required this.totalQuestions,
     required this.correctQuestions,
     required this.subjects,
+    this.answers = const <ExamAnswerHistory>[],
   });
 
+  final int id;
+  final DateTime? startedAt;
   final DateTime? completedAt;
   final int totalQuestions;
   final int correctQuestions;
   final List<ExamSubjectHistory> subjects;
+  final List<ExamAnswerHistory> answers;
 
   int get wrongQuestions => totalQuestions - correctQuestions;
   double get accuracy =>
       totalQuestions == 0 ? 0 : correctQuestions / totalQuestions;
+}
+
+class ExamAnswerHistory {
+  const ExamAnswerHistory({
+    required this.questionCode,
+    required this.selectedChoice,
+    required this.isCorrect,
+  });
+
+  final String questionCode;
+  final int? selectedChoice;
+  final bool isCorrect;
+}
+
+class ExamAnswerResultInput {
+  const ExamAnswerResultInput({
+    required this.questionCode,
+    required this.selectedChoice,
+    required this.isCorrect,
+  });
+
+  final String questionCode;
+  final int? selectedChoice;
+  final bool isCorrect;
 }
 
 class ExamSubjectHistory {

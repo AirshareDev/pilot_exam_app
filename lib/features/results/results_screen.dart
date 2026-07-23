@@ -2,23 +2,27 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../database/questions_database.dart';
 import '../../database/user_database.dart';
 import '../../models/learning_results.dart';
 import '../../shared/app_page.dart';
+import '../mock_exam/mock_exam_screen.dart';
 import '../qualifications/selected_qualification_provider.dart';
 import 'results_provider.dart';
 import 'widgets/subject_radar_chart.dart';
 
 class ResultsScreen extends ConsumerWidget {
-  const ResultsScreen({super.key});
+  const ResultsScreen({this.historyOnly = false, super.key});
+
+  final bool historyOnly;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final results = ref.watch(learningResultsProvider);
 
     return AppPage(
-      title: '成績',
-      actions: [
+      title: historyOnly ? '復習' : '成績',
+      actions: historyOnly ? const <Widget>[] : [
         IconButton(
           tooltip: '成績をリセット',
           onPressed: results.valueOrNull?.totalAnswers == 0
@@ -50,14 +54,73 @@ class ResultsScreen extends ConsumerWidget {
                 ),
               );
             }
-            if (data.totalAnswers == 0) {
+            if ((!historyOnly && data.totalAnswers == 0) ||
+                (historyOnly && data.examHistory.isEmpty)) {
               return _EmptyResultsView(
                 qualificationName: data.qualificationName,
                 onStart: () => context.pop(),
+                message: historyOnly
+                    ? '保存された模擬試験結果はありません。'
+                    : null,
               );
             }
-            return _ResultsBody(results: data);
+            return _ResultsBody(
+              results: data,
+              historyOnly: historyOnly,
+              onOpenExam: (exam) => _openExamResult(context, ref, exam),
+            );
           },
+        ),
+      ),
+    );
+  }
+
+  Future<void> _openExamResult(
+    BuildContext context,
+    WidgetRef ref,
+    ExamResultHistory exam,
+  ) async {
+    if (exam.answers.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('この履歴には問題別データが保存されていません。')),
+      );
+      return;
+    }
+    final qualification = await ref.read(selectedQualificationProvider.future);
+    if (!context.mounted) return;
+    if (qualification == null) return;
+    final questionCodes = exam.answers
+        .map((answer) => answer.questionCode)
+        .toList(growable: false);
+    final loaded = await ref.read(questionsDatabaseProvider).loadQuestionsByCodes(
+          databaseFileName: qualification.databaseFileName,
+          questionCodes: questionCodes,
+        );
+    final byCode = {for (final question in loaded) question.questionCode: question};
+    final questions = [
+      for (final code in questionCodes)
+        if (byCode[code] != null) byCode[code]!,
+    ];
+    if (!context.mounted) return;
+    if (questions.length != exam.answers.length) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('履歴の問題データを読み込めませんでした。')),
+      );
+      return;
+    }
+    final answers = <int, int>{};
+    for (var i = 0; i < exam.answers.length; i++) {
+      final selected = exam.answers[i].selectedChoice;
+      if (selected != null) answers[i] = selected;
+    }
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute(
+        builder: (_) => MockExamResultScreen(
+          questions: questions,
+          answers: answers,
+          correct: exam.correctQuestions,
+          startedAt: exam.startedAt ?? exam.completedAt ?? DateTime.now(),
+          completedAt: exam.completedAt ?? DateTime.now(),
         ),
       ),
     );
@@ -100,9 +163,15 @@ class ResultsScreen extends ConsumerWidget {
 }
 
 class _ResultsBody extends StatefulWidget {
-  const _ResultsBody({required this.results});
+  const _ResultsBody({
+    required this.results,
+    required this.historyOnly,
+    required this.onOpenExam,
+  });
 
   final LearningResults results;
+  final bool historyOnly;
+  final ValueChanged<ExamResultHistory> onOpenExam;
 
   @override
   State<_ResultsBody> createState() => _ResultsBodyState();
@@ -124,8 +193,9 @@ class _ResultsBodyState extends State<_ResultsBody> {
           results.qualificationName,
           style: Theme.of(context).textTheme.titleMedium,
         ),
-        const SizedBox(height: 12),
-        _OverviewCard(results: results),
+        if (!widget.historyOnly) ...[
+          const SizedBox(height: 12),
+          _OverviewCard(results: results),
         if (weakest != null) ...[
           const SizedBox(height: 12),
           _WeakSubjectCard(subject: weakest),
@@ -146,7 +216,8 @@ class _ResultsBodyState extends State<_ResultsBody> {
             child: _SubjectCard(subject: subject),
           ),
         ),
-        const SizedBox(height: 14),
+          const SizedBox(height: 14),
+        ],
         Text('模擬試験履歴', style: Theme.of(context).textTheme.titleLarge),
         const SizedBox(height: 10),
         if (results.examHistory.isEmpty)
@@ -160,11 +231,15 @@ class _ResultsBodyState extends State<_ResultsBody> {
           ...results.examHistory.map(
             (exam) => Padding(
               padding: const EdgeInsets.only(bottom: 10),
-              child: _ExamHistoryCard(exam: exam),
+              child: _ExamHistoryCard(
+                exam: exam,
+                onTap: () => widget.onOpenExam(exam),
+              ),
             ),
           ),
-        const SizedBox(height: 14),
-        Card(
+        if (!widget.historyOnly) ...[
+          const SizedBox(height: 14),
+          Card(
           clipBehavior: Clip.antiAlias,
           child: Column(
             children: [
@@ -205,7 +280,8 @@ class _ResultsBodyState extends State<_ResultsBody> {
               ),
             ],
           ),
-        ),
+          ),
+        ],
         const SizedBox(height: 24),
       ],
     );
@@ -332,16 +408,20 @@ class _SubjectCard extends StatelessWidget {
 }
 
 class _ExamHistoryCard extends StatelessWidget {
-  const _ExamHistoryCard({required this.exam});
+  const _ExamHistoryCard({required this.exam, required this.onTap});
 
   final ExamResultHistory exam;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
     return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: exam.answers.isEmpty ? null : onTap,
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
@@ -389,6 +469,7 @@ class _ExamHistoryCard extends StatelessWidget {
           ],
         ),
       ),
+      ),
     );
   }
 }
@@ -412,10 +493,15 @@ class _RecentAnswerTile extends StatelessWidget {
 }
 
 class _EmptyResultsView extends StatelessWidget {
-  const _EmptyResultsView({required this.qualificationName, required this.onStart});
+  const _EmptyResultsView({
+    required this.qualificationName,
+    required this.onStart,
+    this.message,
+  });
 
   final String qualificationName;
   final VoidCallback onStart;
+  final String? message;
 
   @override
   Widget build(BuildContext context) {
@@ -426,12 +512,16 @@ class _EmptyResultsView extends StatelessWidget {
         const SizedBox(height: 80),
         const Icon(Icons.bar_chart_outlined, size: 64),
         const SizedBox(height: 20),
-        Text('まだ回答履歴がありません',
-            textAlign: TextAlign.center,
-            style: Theme.of(context).textTheme.titleLarge),
+        Text(
+          message ?? 'まだ回答履歴がありません',
+          textAlign: TextAlign.center,
+          style: Theme.of(context).textTheme.titleLarge,
+        ),
         const SizedBox(height: 10),
         Text(
-          '$qualificationNameの問題を解くと、総合正答率や科目別成績が表示されます。',
+          message == null
+              ? '$qualificationNameの問題を解くと、総合正答率や科目別成績が表示されます。'
+              : '模擬試験を採点すると、ここから結果確認と間違えた問題の復習ができます。',
           textAlign: TextAlign.center,
         ),
         const SizedBox(height: 24),

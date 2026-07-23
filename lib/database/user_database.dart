@@ -188,7 +188,7 @@ class UserDatabase {
     try {
       final resultRows = await db.rawQuery(
         '''
-        SELECT rowid AS result_row_id, completed_at, total_questions,
+        SELECT rowid AS result_row_id, started_at, completed_at, total_questions,
                correct_questions
         FROM exam_results
         WHERE qualification_code = ?
@@ -213,6 +213,16 @@ class UserDatabase {
         ids,
       );
 
+      final answerRows = await db.rawQuery(
+        '''
+        SELECT exam_result_id, question_code, selected_choice, is_correct
+        FROM exam_result_answers
+        WHERE exam_result_id IN ($placeholders)
+        ORDER BY exam_result_answer_id ASC
+        ''',
+        ids,
+      );
+
       final subjectsByResult = <int, List<ExamSubjectHistory>>{};
       for (final row in subjectRows) {
         final resultId = _readIntValue(row['exam_result_id']);
@@ -225,13 +235,30 @@ class UserDatabase {
             );
       }
 
+      final answersByResult = <int, List<ExamAnswerHistory>>{};
+      for (final row in answerRows) {
+        final resultId = _readIntValue(row['exam_result_id']);
+        final selectedValue = row['selected_choice'];
+        answersByResult.putIfAbsent(resultId, () => []).add(
+              ExamAnswerHistory(
+                questionCode: row['question_code']?.toString() ?? '',
+                selectedChoice:
+                    selectedValue == null ? null : _readIntValue(selectedValue),
+                isCorrect: _readIntValue(row['is_correct']) == 1,
+              ),
+            );
+      }
+
       return resultRows.map((row) {
         final resultId = _readIntValue(row['result_row_id']);
         return ExamResultHistory(
+          id: resultId,
+          startedAt: DateTime.tryParse(row['started_at']?.toString() ?? ''),
           completedAt: DateTime.tryParse(row['completed_at']?.toString() ?? ''),
           totalQuestions: _readIntValue(row['total_questions']),
           correctQuestions: _readIntValue(row['correct_questions']),
           subjects: List.unmodifiable(subjectsByResult[resultId] ?? const []),
+          answers: List.unmodifiable(answersByResult[resultId] ?? const []),
         );
       }).toList(growable: false);
     } finally {
@@ -247,6 +274,7 @@ class UserDatabase {
     required int correctQuestions,
     required int passingScorePercent,
     required List<ExamSubjectResultInput> subjectResults,
+    required List<ExamAnswerResultInput> answers,
     String mockExamPatternCode = 'standard',
   }) async {
     final db = await _requireOpen();
@@ -271,6 +299,14 @@ class UserDatabase {
             'subject_name': subject.subjectName,
             'total_questions': subject.totalQuestions,
             'correct_questions': subject.correctQuestions,
+          });
+        }
+        for (final answer in answers) {
+          await txn.insert('exam_result_answers', {
+            'exam_result_id': resultId,
+            'question_code': answer.questionCode,
+            'selected_choice': answer.selectedChoice,
+            'is_correct': answer.isCorrect ? 1 : 0,
           });
         }
       });
@@ -301,6 +337,10 @@ class UserDatabase {
           final placeholders = List.filled(resultIds.length, '?').join(',');
           await txn.rawDelete(
             'DELETE FROM exam_result_subjects WHERE exam_result_id IN ($placeholders)',
+            resultIds,
+          );
+          await txn.rawDelete(
+            'DELETE FROM exam_result_answers WHERE exam_result_id IN ($placeholders)',
             resultIds,
           );
         }
@@ -401,6 +441,19 @@ class UserDatabase {
     await db.execute('''
       CREATE INDEX IF NOT EXISTS idx_exam_result_subjects_result
       ON exam_result_subjects(exam_result_id)
+    ''');
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS exam_result_answers (
+        exam_result_answer_id INTEGER PRIMARY KEY AUTOINCREMENT,
+        exam_result_id INTEGER NOT NULL,
+        question_code TEXT NOT NULL,
+        selected_choice INTEGER,
+        is_correct INTEGER NOT NULL DEFAULT 0
+      )
+    ''');
+    await db.execute('''
+      CREATE INDEX IF NOT EXISTS idx_exam_result_answers_result
+      ON exam_result_answers(exam_result_id)
     ''');
   }
 

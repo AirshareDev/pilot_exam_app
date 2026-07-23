@@ -438,6 +438,43 @@ class _MockExamScreenState extends ConsumerState<MockExamScreen> {
                   children: subjectGroups,
                 ),
               ),
+              SafeArea(
+                top: false,
+                child: Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.fromLTRB(20, 12, 20, 16),
+                  decoration: BoxDecoration(
+                    color: colorScheme.surface,
+                    border: Border(
+                      top: BorderSide(color: colorScheme.outlineVariant),
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text('回答済み ${_answers.length}/${questions.length}'),
+                            Text(
+                              '未回答 ${questions.length - _answers.length}問',
+                              style: Theme.of(context).textTheme.bodySmall,
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 16),
+                      FilledButton(
+                        onPressed: _submitting
+                            ? null
+                            : () => Navigator.of(context).pop(-1),
+                        child: const Text('採点する'),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
             ],
           ),
         );
@@ -445,6 +482,10 @@ class _MockExamScreenState extends ConsumerState<MockExamScreen> {
     );
 
     if (selectedIndex == null || !mounted) return;
+    if (selectedIndex == -1) {
+      await _submit();
+      return;
+    }
     setState(() {
       _currentIndex = selectedIndex;
       _stage = _MockExamStage.answering;
@@ -529,7 +570,8 @@ class _MockExamScreenState extends ConsumerState<MockExamScreen> {
         builder: (context) => AlertDialog(
           title: const Text('未回答の問題があります'),
           content: Text(
-            '${questions.length - _answers.length}問が未回答です。このまま採点しますか？',
+            '未回答が${questions.length - _answers.length}問あります。\n\n'
+            '未回答は不正解として採点します。',
           ),
           actions: [
             TextButton(
@@ -603,6 +645,15 @@ class _MockExamScreenState extends ConsumerState<MockExamScreen> {
               ),
             )
             .toList(growable: false),
+        answers: [
+          for (var i = 0; i < questions.length; i++)
+            ExamAnswerResultInput(
+              questionCode: questions[i].questionCode,
+              selectedChoice: _answers[i],
+              isCorrect: _answers[i] != null &&
+                  questions[i].isCorrectChoice(_answers[i]!),
+            ),
+        ],
       );
       ref.invalidate(learningResultsProvider);
       await _clearOwnedProgress();
@@ -610,7 +661,7 @@ class _MockExamScreenState extends ConsumerState<MockExamScreen> {
       if (!mounted) return;
       await Navigator.of(context).push<void>(
         MaterialPageRoute(
-          builder: (_) => _MockExamResultScreen(
+          builder: (_) => MockExamResultScreen(
             questions: questions,
             answers: Map<int, int>.unmodifiable(_answers),
             correct: correct,
@@ -1104,8 +1155,9 @@ class _MockExamChoiceCard extends StatelessWidget {
   }
 }
 
-class _MockExamResultScreen extends StatelessWidget {
-  const _MockExamResultScreen({
+class MockExamResultScreen extends StatelessWidget {
+  const MockExamResultScreen({
+    super.key,
     required this.questions,
     required this.answers,
     required this.correct,

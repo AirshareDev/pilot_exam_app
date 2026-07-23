@@ -95,12 +95,7 @@ class HomeScreen extends ConsumerWidget {
               const SizedBox(height: 12),
               _RecordMenuRow(
                 onResults: () => context.push('/results'),
-                onIncorrectQuestions: () {
-                  _showComingSoon(
-                    context,
-                    '間違えた問題は、学習履歴機能とあわせて実装します。',
-                  );
-                },
+                onIncorrectQuestions: () => context.push('/review'),
                 onBookmarks: () => context.push('/bookmarks'),
               ),
               const SizedBox(height: 24),
@@ -111,14 +106,6 @@ class HomeScreen extends ConsumerWidget {
     );
   }
 
-  static void _showComingSoon(
-    BuildContext context,
-    String message,
-  ) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message)),
-    );
-  }
 }
 
 class _SelectedQualificationCard extends StatelessWidget {
