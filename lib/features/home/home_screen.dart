@@ -403,7 +403,7 @@ class _MenuGridCard extends StatelessWidget {
                 Text(
                   item.label,
                   textAlign: TextAlign.center,
-                  style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
                         color: item.color,
                         fontWeight: FontWeight.w800,
                       ),
@@ -414,7 +414,7 @@ class _MenuGridCard extends StatelessWidget {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   textAlign: TextAlign.center,
-                  style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
                         color: AppColors.textSecondary,
                       ),
                 ),
@@ -444,7 +444,7 @@ class _RecordMenuRow extends StatelessWidget {
           const SizedBox(width: 10),
           Expanded(child: _RecordMenuCard(icon: Icons.replay_rounded, label: '復習', color: AppColors.orange, onTap: onIncorrectQuestions)),
           const SizedBox(width: 10),
-          Expanded(child: _RecordMenuCard(icon: Icons.bookmark_outline_rounded, label: '保存', color: AppColors.teal, onTap: onBookmarks)),
+          Expanded(child: _RecordMenuCard(icon: Icons.bookmark_outline_rounded, label: 'ブックマーク', color: AppColors.teal, onTap: onBookmarks)),
         ],
       );
 }

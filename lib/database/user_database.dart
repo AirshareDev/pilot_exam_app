@@ -367,6 +367,92 @@ class UserDatabase {
     }
   }
 
+
+  Future<Map<String, String>> loadAppSettings() async {
+    final db = await _open();
+    if (db == null) return const <String, String>{};
+    try {
+      final rows = await db.query('app_settings');
+      return <String, String>{
+        for (final row in rows)
+          row['setting_key']?.toString() ?? '':
+              row['setting_value']?.toString() ?? '',
+      }..remove('');
+    } finally {
+      await db.close();
+    }
+  }
+
+  Future<void> saveAppSettings(Map<String, String> values) async {
+    final db = await _requireOpen();
+    try {
+      await db.transaction((txn) async {
+        for (final entry in values.entries) {
+          await txn.insert(
+            'app_settings',
+            {
+              'setting_key': entry.key,
+              'setting_value': entry.value,
+            },
+            conflictAlgorithm: ConflictAlgorithm.replace,
+          );
+        }
+      });
+    } finally {
+      await db.close();
+    }
+  }
+
+  Future<void> resetExamResults({required String qualificationCode}) async {
+    final db = await _requireOpen();
+    try {
+      await db.transaction((txn) async {
+        final resultRows = await txn.rawQuery(
+          'SELECT rowid AS result_row_id FROM exam_results WHERE qualification_code = ?',
+          [qualificationCode],
+        );
+        final resultIds = resultRows
+            .map((row) => _readIntValue(row['result_row_id']))
+            .toList(growable: false);
+        if (resultIds.isNotEmpty) {
+          final placeholders = List.filled(resultIds.length, '?').join(',');
+          await txn.rawDelete(
+            'DELETE FROM exam_result_subjects WHERE exam_result_id IN ($placeholders)',
+            resultIds,
+          );
+          await txn.rawDelete(
+            'DELETE FROM exam_result_answers WHERE exam_result_id IN ($placeholders)',
+            resultIds,
+          );
+        }
+        await txn.delete(
+          'exam_results',
+          where: 'qualification_code = ?',
+          whereArgs: [qualificationCode],
+        );
+      });
+    } finally {
+      await db.close();
+    }
+  }
+
+  Future<void> resetAnswerHistory({required String qualificationCode}) async {
+    final db = await _requireOpen();
+    try {
+      await db.delete(
+        'answer_history',
+        where: 'qualification_code = ?',
+        whereArgs: [qualificationCode],
+      );
+    } finally {
+      await db.close();
+    }
+  }
+
+  Future<void> resetAllAnswers({required String qualificationCode}) async {
+    await resetLearningResults(qualificationCode: qualificationCode);
+  }
+
   Future<void> recordAnswer({
     required String qualificationCode,
     required String questionCode,
@@ -454,6 +540,12 @@ class UserDatabase {
     await db.execute('''
       CREATE INDEX IF NOT EXISTS idx_exam_result_answers_result
       ON exam_result_answers(exam_result_id)
+    ''');
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS app_settings (
+        setting_key TEXT PRIMARY KEY,
+        setting_value TEXT NOT NULL
+      )
     ''');
   }
 

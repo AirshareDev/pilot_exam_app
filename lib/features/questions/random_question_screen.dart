@@ -10,6 +10,7 @@ import '../../models/question_learning_status.dart';
 import '../../models/qualification.dart';
 import '../../shared/app_page.dart';
 import '../learning_progress/learning_session_progress_provider.dart';
+import '../settings/app_settings_provider.dart';
 import 'question_provider.dart';
 import 'widgets/choice_card.dart';
 
@@ -273,7 +274,7 @@ class _RandomQuestionScreenState extends ConsumerState<RandomQuestionScreen> {
                             fontSize: 16,
                             height: 1.75,
                             fontWeight: FontWeight.w600,
-                            color: AppColors.textPrimary,
+                            color: Theme.of(context).colorScheme.onSurface,
                           ),
                     ),
                   ),
@@ -454,6 +455,16 @@ class _RandomQuestionScreenState extends ConsumerState<RandomQuestionScreen> {
           selectedChoice: selectedChoice,
         ));
     unawaited(_answerWriteQueue);
+
+    final settings = ref.read(appSettingsProvider);
+    if (isCorrect && settings.advanceAfterCorrect) {
+      Future<void>.delayed(const Duration(milliseconds: 900), () {
+        if (!mounted || _answerState.value?.selectedChoice != selectedChoice) {
+          return;
+        }
+        _goToNextQuestion(_questions);
+      });
+    }
   }
 
   Future<void> _persistAnswer({
@@ -675,7 +686,7 @@ class _QuestionHeader extends StatelessWidget {
         Text(
           '正解数 $correctCount',
           style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                color: AppColors.textSecondary,
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
                 fontWeight: FontWeight.w600,
               ),
         ),

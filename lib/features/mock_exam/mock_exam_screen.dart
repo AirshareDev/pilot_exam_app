@@ -20,6 +20,7 @@ import '../learning_progress/resume_guard.dart';
 import '../qualifications/selected_qualification_provider.dart';
 import '../questions/widgets/choice_card.dart';
 import '../results/results_provider.dart';
+import '../settings/app_settings_provider.dart';
 
 enum _MockExamMode { exam, practice }
 enum _MockExamQuestionSource { random, examSession }
@@ -74,6 +75,13 @@ class _MockExamScreenState extends ConsumerState<MockExamScreen> {
   @override
   void initState() {
     super.initState();
+    final settings = ref.read(appSettingsProvider);
+    _selectedQuestionCount = settings.defaultMockQuestionCount;
+    _selectedDurationMinutes = settings.defaultMockDurationMinutes;
+    _questionSource = settings.defaultMockRandom
+        ? _MockExamQuestionSource.random
+        : _MockExamQuestionSource.examSession;
+    _remaining = Duration(minutes: _selectedDurationMinutes);
     final progress = widget.resumeProgress;
     if (progress != null && progress.mode == 'mockPractice') {
       _resumePractice(progress);
@@ -1053,7 +1061,7 @@ class _MockExamScreenState extends ConsumerState<MockExamScreen> {
         Text(
           '出題条件を選択して、練習または本試験モードを開始します。',
           style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                color: AppColors.textSecondary,
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
               ),
         ),
         const SizedBox(height: 18),
@@ -1346,7 +1354,7 @@ class _MockExamScreenState extends ConsumerState<MockExamScreen> {
                           fontSize: 16,
                           height: 1.75,
                           fontWeight: FontWeight.w600,
-                          color: AppColors.textPrimary,
+                          color: Theme.of(context).colorScheme.onSurface,
                         ),
                   ),
                 ),
@@ -1354,10 +1362,7 @@ class _MockExamScreenState extends ConsumerState<MockExamScreen> {
               if (question.imagePath != null &&
                   question.imagePath!.isNotEmpty) ...[
                 const SizedBox(height: 12),
-                Image.asset(
-                  question.imagePath!,
-                  errorBuilder: (_, __, ___) => const SizedBox.shrink(),
-                ),
+                _MockQuestionImage(imagePath: question.imagePath!),
               ],
               const SizedBox(height: 16),
               for (var i = 0; i < question.choices.length; i++)
@@ -1369,6 +1374,18 @@ class _MockExamScreenState extends ConsumerState<MockExamScreen> {
                   onTap: () {
                     if (_submitting) return;
                     setState(() => _answers[_currentIndex] = i + 1);
+                    final settings = ref.read(appSettingsProvider);
+                    if (settings.advanceAfterMockAnswer &&
+                        _currentIndex < questions.length - 1) {
+                      Future<void>.delayed(
+                        const Duration(milliseconds: 600),
+                        () {
+                          if (!mounted || _submitting) return;
+                          setState(() => _currentIndex++);
+                          _scrollMockQuestionToTop();
+                        },
+                      );
+                    }
                   },
                 ),
            ],
@@ -1497,7 +1514,7 @@ class _ExamSessionSelector extends StatelessWidget {
                     ? Text(
                         '年度・期を選択',
                         style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                              color: AppColors.textSecondary,
+                              color: Theme.of(context).colorScheme.onSurfaceVariant,
                             ),
                       )
                     : Column(
@@ -1508,7 +1525,7 @@ class _ExamSessionSelector extends StatelessWidget {
                             maxLines: 2,
                             overflow: TextOverflow.ellipsis,
                             style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                                  color: AppColors.textPrimary,
+                                  color: Theme.of(context).colorScheme.onSurface,
                                   fontWeight: FontWeight.w700,
                                   height: 1.35,
                                 ),
@@ -1517,14 +1534,14 @@ class _ExamSessionSelector extends StatelessWidget {
                           Text(
                             '${session!.questionCount}問',
                             style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                  color: AppColors.textSecondary,
+                                  color: Theme.of(context).colorScheme.onSurfaceVariant,
                                 ),
                           ),
                         ],
                       ),
               ),
               const SizedBox(width: 8),
-              const Icon(Icons.expand_more_rounded, color: AppColors.textSecondary),
+              Icon(Icons.expand_more_rounded, color: Theme.of(context).colorScheme.onSurfaceVariant),
             ],
           ),
         ),
@@ -1969,10 +1986,7 @@ class _MockExamQuestionDetailScreen extends StatelessWidget {
           ),
           if (question.imagePath != null && question.imagePath!.isNotEmpty) ...[
             const SizedBox(height: 12),
-            Image.asset(
-              question.imagePath!,
-              errorBuilder: (_, __, ___) => const SizedBox.shrink(),
-            ),
+            _MockQuestionImage(imagePath: question.imagePath!),
           ],
           const SizedBox(height: 16),
           for (var i = 0; i < question.choices.length; i++)
@@ -2291,4 +2305,115 @@ String _formatDuration(Duration duration) {
 class _ExamSubjectAccumulator {
   int totalQuestions = 0;
   int correctQuestions = 0;
+}
+
+
+class _MockQuestionImage extends StatelessWidget {
+  const _MockQuestionImage({required this.imagePath});
+
+  final String imagePath;
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      margin: EdgeInsets.zero,
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: () => showDialog<void>(
+          context: context,
+          builder: (_) => _MockZoomableImageViewer(imagePath: imagePath),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Column(
+            children: [
+              ConstrainedBox(
+                constraints: const BoxConstraints(minHeight: 120, maxHeight: 360),
+                child: Image.asset(
+                  imagePath,
+                  width: double.infinity,
+                  fit: BoxFit.contain,
+                  errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+                ),
+              ),
+              const SizedBox(height: 8),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.zoom_in_rounded,
+                      size: 18, color: Theme.of(context).colorScheme.primary),
+                  const SizedBox(width: 4),
+                  Text(
+                    'タップして拡大・ピンチズーム',
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: Theme.of(context).colorScheme.primary,
+                        ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _MockZoomableImageViewer extends StatefulWidget {
+  const _MockZoomableImageViewer({required this.imagePath});
+  final String imagePath;
+
+  @override
+  State<_MockZoomableImageViewer> createState() =>
+      _MockZoomableImageViewerState();
+}
+
+class _MockZoomableImageViewerState extends State<_MockZoomableImageViewer> {
+  final TransformationController _controller = TransformationController();
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Dialog.fullscreen(
+      child: Scaffold(
+        appBar: AppBar(
+          title: const Text('問題画像'),
+          leading: IconButton(
+            onPressed: () => Navigator.of(context).pop(),
+            icon: const Icon(Icons.close_rounded),
+          ),
+          actions: [
+            IconButton(
+              tooltip: '拡大を元に戻す',
+              onPressed: () => _controller.value = Matrix4.identity(),
+              icon: const Icon(Icons.refresh_rounded),
+            ),
+          ],
+        ),
+        body: InteractiveViewer(
+          transformationController: _controller,
+          minScale: 1,
+          maxScale: 6,
+          panEnabled: true,
+          scaleEnabled: true,
+          boundaryMargin: const EdgeInsets.all(80),
+          clipBehavior: Clip.none,
+          child: SizedBox.expand(
+            child: Image.asset(
+              widget.imagePath,
+              fit: BoxFit.contain,
+              errorBuilder: (_, __, ___) => const Center(
+                child: Text('画像を読み込めませんでした。'),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }
