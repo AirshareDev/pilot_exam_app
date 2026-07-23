@@ -5,12 +5,12 @@ import '../design/app_app_bar.dart';
 import '../features/home/home_screen.dart';
 import '../features/mock_exam/mock_exam_screen.dart';
 import '../features/past_exams/year_selection_screen.dart';
-import '../features/placeholder/feature_placeholder_screen.dart';
 import '../features/qualifications/qualification_menu_screen.dart';
 import '../features/qualifications/qualification_screen.dart';
 import '../features/questions/bookmarked_question_screen.dart';
 import '../features/questions/random_question_screen.dart';
 import '../features/results/results_screen.dart';
+import '../features/settings/settings_screen.dart';
 import '../features/subjects/subject_selection_screen.dart';
 import '../models/learning_session_progress.dart';
 import '../models/qualification.dart';
@@ -141,10 +141,7 @@ final GoRouter appRouter = GoRouter(
     ),
     GoRoute(
       path: '/settings',
-      builder: (context, state) => const FeaturePlaceholderScreen(
-        title: '設定',
-        description: 'DB情報、表示設定、購入状態などを配置します。',
-      ),
+      builder: (context, state) => const SettingsScreen(),
     ),
   ],
 );

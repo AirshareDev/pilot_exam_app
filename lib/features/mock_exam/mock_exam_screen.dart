@@ -654,6 +654,46 @@ class _MockExamScreenState extends ConsumerState<MockExamScreen> {
     }
   }
 
+  Future<bool> _savePracticeProgressOnly() async {
+    if (_mode != _MockExamMode.practice || _savingProgress) return false;
+    final questions = _questions ?? const <Question>[];
+    if (questions.isEmpty) return false;
+
+    setState(() => _savingProgress = true);
+    try {
+      final qualification = await _resolveQualification();
+      if (qualification == null) {
+        throw StateError('資格が選択されていません。');
+      }
+      final progress = LearningSessionProgress(
+        qualificationId: qualification.id,
+        qualificationCode: qualification.code,
+        qualificationName: qualification.name,
+        mode: 'mockPractice',
+        resumeType: ResumeType.mockExam,
+        questionCodes: questions
+            .map((question) => question.questionCode)
+            .toList(growable: false),
+        nextIndex: _currentIndex,
+        correctCount: 0,
+        updatedAt: DateTime.now(),
+        answers: Map<int, int>.unmodifiable(_answers),
+      );
+      await ref.read(learningSessionProgressStoreProvider).save(progress);
+      _ownsSavedProgress = true;
+      ref.invalidate(learningSessionProgressProvider);
+      if (mounted) setState(() => _savingProgress = false);
+      return true;
+    } catch (error) {
+      if (!mounted) return false;
+      setState(() => _savingProgress = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('中断データを保存できませんでした: $error')),
+      );
+      return false;
+    }
+  }
+
   Future<void> _clearOwnedProgress() async {
     if (!_ownsSavedProgress) return;
     await ref.read(learningSessionProgressStoreProvider).clear();
@@ -828,12 +868,137 @@ class _MockExamScreenState extends ConsumerState<MockExamScreen> {
                       label: Text(_savingProgress ? '保存中…' : '中断'),
                     ),
                   ),
-                const AppHomeActionButton(),
+                _buildMockExamHomeAction(),
               ]
-            : const [AppHomeActionButton()],
+            : [_buildMockExamHomeAction()],
       ),
       body: _buildBody(context),
     );
+  }
+
+  Widget _buildMockExamHomeAction() {
+    return Padding(
+      padding: const EdgeInsets.only(right: 6),
+      child: IconButton.filledTonal(
+        tooltip: 'ホームへ戻る',
+        onPressed: _confirmAndGoHome,
+        style: IconButton.styleFrom(
+          backgroundColor: Colors.white.withValues(alpha: 0.16),
+          foregroundColor: Colors.white,
+        ),
+        icon: const Icon(Icons.home_rounded, size: 21),
+      ),
+    );
+  }
+
+  Future<void> _confirmAndGoHome() async {
+    final isRunning = !_loading &&
+        (_stage == _MockExamStage.subjectIntro ||
+            _stage == _MockExamStage.answering);
+    if (!isRunning) {
+      if (mounted) context.go('/');
+      return;
+    }
+
+    final isPractice = _mode == _MockExamMode.practice;
+    final shouldLeave = await showDialog<bool>(
+          context: context,
+          builder: (dialogContext) => AlertDialog(
+            icon: Icon(
+              isPractice
+                  ? Icons.pause_circle_outline_rounded
+                  : Icons.warning_amber_rounded,
+              color: AppColors.navy,
+            ),
+            title: Text(isPractice ? '練習を中断しますか？' : '模擬試験を終了しますか？'),
+            content: Text(
+              isPractice
+                  ? 'ホームへ戻る前に、現在の進捗を保存できます。'
+                  : '現在の解答内容は保存されません。',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(dialogContext).pop(false),
+                child: const Text('キャンセル'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.of(dialogContext).pop(true),
+                child: Text(isPractice ? '保存して戻る' : '終了する'),
+              ),
+            ],
+          ),
+        ) ??
+        false;
+    if (!shouldLeave || !mounted) return;
+
+    if (isPractice) {
+      final saved = await _savePracticeProgressOnly();
+      if (!saved || !mounted) return;
+    }
+    context.go('/');
+  }
+
+  Future<void> _showExamSessionSelector() async {
+    if (_examSessions.isEmpty) return;
+    final selectedId = await showModalBottomSheet<int>(
+      context: context,
+      showDragHandle: true,
+      isScrollControlled: true,
+      builder: (sheetContext) => SafeArea(
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            maxHeight: MediaQuery.sizeOf(sheetContext).height * 0.72,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 4, 20, 12),
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    '年度・期を選択',
+                    style: Theme.of(sheetContext).textTheme.titleLarge?.copyWith(
+                          color: AppColors.navy,
+                          fontWeight: FontWeight.w800,
+                        ),
+                  ),
+                ),
+              ),
+              const Divider(height: 1),
+              Flexible(
+                child: ListView.separated(
+                  shrinkWrap: true,
+                  itemCount: _examSessions.length,
+                  separatorBuilder: (_, __) => const Divider(height: 1, indent: 20),
+                  itemBuilder: (context, index) {
+                    final session = _examSessions[index];
+                    final selected = session.id == _selectedExamSessionId;
+                    return ListTile(
+                      title: Text(
+                        session.displayName,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      subtitle: Text('${session.questionCount}問'),
+                      trailing: selected
+                          ? const Icon(Icons.check_circle_rounded, color: AppColors.blue)
+                          : null,
+                      onTap: () => Navigator.of(sheetContext).pop(session.id),
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    if (selectedId == null || !mounted) return;
+    setState(() {
+      _selectedExamSessionId = selectedId;
+      _normalizeQuestionCountForSelectedSession();
+    });
   }
 
   ExamSession? get _selectedExamSession {
@@ -947,24 +1112,10 @@ class _MockExamScreenState extends ConsumerState<MockExamScreen> {
                 ),
                 if (_questionSource == _MockExamQuestionSource.examSession) ...[
                   const SizedBox(height: 4),
-                  DropdownButtonFormField<int>(
-                    initialValue: _selectedExamSessionId,
-                  decoration: const InputDecoration(
-                    labelText: '年度・期を選択',
-                    border: OutlineInputBorder(),
+                  _ExamSessionSelector(
+                    session: _selectedExamSession,
+                    onTap: _showExamSessionSelector,
                   ),
-                  items: [
-                    for (final session in _examSessions)
-                      DropdownMenuItem(
-                        value: session.id,
-                        child: Text('${session.displayName}（${session.questionCount}問）'),
-                      ),
-                  ],
-                  onChanged: (value) => setState(() {
-                    _selectedExamSessionId = value;
-                    _normalizeQuestionCountForSelectedSession();
-                  }),
-                ),
                 ],
               ],
             ),
@@ -1311,6 +1462,73 @@ class _QuestionListLegend extends StatelessWidget {
         const SizedBox(width: 5),
         Text(label, style: Theme.of(context).textTheme.bodySmall),
       ],
+    );
+  }
+}
+
+class _ExamSessionSelector extends StatelessWidget {
+  const _ExamSessionSelector({required this.session, required this.onTap});
+
+  final ExamSession? session;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(14),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(14),
+        child: Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: AppColors.border),
+          ),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              const Icon(Icons.calendar_month_outlined, color: AppColors.navy),
+              const SizedBox(width: 12),
+              Expanded(
+                child: session == null
+                    ? Text(
+                        '年度・期を選択',
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                              color: AppColors.textSecondary,
+                            ),
+                      )
+                    : Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            session!.displayName,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                  color: AppColors.textPrimary,
+                                  fontWeight: FontWeight.w700,
+                                  height: 1.35,
+                                ),
+                          ),
+                          const SizedBox(height: 3),
+                          Text(
+                            '${session!.questionCount}問',
+                            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                  color: AppColors.textSecondary,
+                                ),
+                          ),
+                        ],
+                      ),
+              ),
+              const SizedBox(width: 8),
+              const Icon(Icons.expand_more_rounded, color: AppColors.textSecondary),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

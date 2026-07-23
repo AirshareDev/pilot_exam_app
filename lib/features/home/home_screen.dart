@@ -457,24 +457,43 @@ class _RecordMenuCard extends StatelessWidget {
   final VoidCallback onTap;
 
   @override
-  Widget build(BuildContext context) => AppCard(
-        onTap: onTap,
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 18),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              width: 42,
-              height: 42,
-              decoration: BoxDecoration(
-                color: color.withValues(alpha: 0.11),
-                shape: BoxShape.circle,
-              ),
-              child: Icon(icon, size: 23, color: color),
+  Widget build(BuildContext context) => Card(
+        margin: EdgeInsets.zero,
+        color: color.withValues(alpha: 0.085),
+        surfaceTintColor: Colors.transparent,
+        elevation: 0,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+          side: BorderSide(color: color.withValues(alpha: 0.30)),
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 42,
+                  height: 42,
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.86),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(icon, size: 23, color: color),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  label,
+                  style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                        color: AppColors.navy,
+                        fontWeight: FontWeight.w700,
+                      ),
+                ),
+              ],
             ),
-            const SizedBox(height: 9),
-            Text(label, style: Theme.of(context).textTheme.titleSmall),
-          ],
+          ),
         ),
       );
 }
