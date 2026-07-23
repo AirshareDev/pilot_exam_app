@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../models/learning_session_progress.dart';
 import '../../models/qualification.dart';
+import '../../design/app_app_bar.dart';
 import '../learning_progress/learning_session_progress_provider.dart';
 import '../learning_progress/resume_guard.dart';
 import '../qualifications/qualification_provider.dart';
@@ -25,7 +26,8 @@ class HomeScreen extends ConsumerWidget {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('パイロット試験対策'),
+        title: const Text('航空従事者技能証明試験ー学科試験対策'),
+        flexibleSpace: const AppBarBackground(),
         actions: [
           IconButton(
             tooltip: '設定',

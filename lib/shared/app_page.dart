@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:go_router/go_router.dart';
+
+import '../design/app_app_bar.dart';
 
 class AppPage extends StatelessWidget {
   const AppPage({
@@ -18,15 +19,13 @@ class AppPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        leading: showBackButton && context.canPop()
-            ? IconButton(
-                onPressed: context.pop,
-                icon: const Icon(Icons.arrow_back),
-              )
-            : null,
-        title: Text(title),
-        actions: actions,
+      appBar: AppBarGradient(
+        appBar: AppBar(
+          leading: showBackButton ? const AppHomeButton() : null,
+          automaticallyImplyLeading: false,
+          title: Text(title),
+          actions: actions,
+        ),
       ),
       body: SafeArea(child: body),
     );

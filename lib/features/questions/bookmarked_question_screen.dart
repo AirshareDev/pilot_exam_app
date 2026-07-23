@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../design/app_app_bar.dart';
 import '../../models/qualification.dart';
 import '../qualifications/qualification_provider.dart';
 import '../qualifications/selected_qualification_provider.dart';
@@ -73,7 +74,12 @@ class _SelectionErrorScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('ブックマーク')),
+      appBar: AppBar(
+        leading: const AppHomeButton(),
+        automaticallyImplyLeading: false,
+        title: const Text('ブックマーク'),
+        flexibleSpace: const AppBarBackground(),
+      ),
       body: Center(
         child: Padding(
           padding: const EdgeInsets.all(24),

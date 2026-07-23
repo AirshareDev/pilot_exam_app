@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../design/app_app_bar.dart';
 import '../../models/qualification.dart';
 import '../../models/subject.dart';
 import '../qualifications/selected_qualification_provider.dart';
@@ -16,7 +17,12 @@ class SubjectSelectionScreen extends ConsumerWidget {
     final selectedQualification = ref.watch(selectedQualificationProvider);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('科目別')),
+      appBar: AppBar(
+        leading: const AppHomeButton(),
+        automaticallyImplyLeading: false,
+        title: const Text('科目別'),
+        flexibleSpace: const AppBarBackground(),
+      ),
       body: selectedQualification.when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (error, stackTrace) => _ErrorView(

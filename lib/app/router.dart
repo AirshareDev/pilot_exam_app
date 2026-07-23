@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
+import '../design/app_app_bar.dart';
 import '../features/home/home_screen.dart';
 import '../features/mock_exam/mock_exam_screen.dart';
 import '../features/past_exams/year_selection_screen.dart';
@@ -158,7 +159,12 @@ class _RouteErrorScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('画面を開けません')), 
+      appBar: AppBar(
+        leading: const AppHomeButton(),
+        automaticallyImplyLeading: false,
+        title: const Text('画面を開けません'),
+        flexibleSpace: const AppBarBackground(),
+      ), 
       body: Center(
         child: Padding(
           padding: const EdgeInsets.all(24),

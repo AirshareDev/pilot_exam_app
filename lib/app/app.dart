@@ -9,7 +9,7 @@ class PilotExamApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp.router(
-      title: 'パイロット試験対策',
+      title: '航空従事者技能証明試験ー学科試験対策',
       debugShowCheckedModeBanner: false,
       theme: buildAppTheme(),
       routerConfig: appRouter,

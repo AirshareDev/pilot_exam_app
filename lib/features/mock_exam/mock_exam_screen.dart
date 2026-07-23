@@ -4,8 +4,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../design/app_app_bar.dart';
 import '../../database/questions_database.dart';
 import '../../database/user_database.dart';
+import '../../models/exam_session.dart';
 import '../../models/learning_results.dart';
 import '../../models/learning_session_progress.dart';
 import '../../models/qualification.dart';
@@ -19,17 +21,16 @@ import '../questions/widgets/choice_card.dart';
 import '../results/results_provider.dart';
 
 enum _MockExamMode { exam, practice }
+enum _MockExamQuestionSource { random, examSession }
 enum _MockExamStage { modeSelection, subjectOverview, subjectIntro, answering }
 
 class MockExamConfig {
   const MockExamConfig._();
 
   static const int subjectCount = 5;
-  static const int questionsPerSubject = 10;
+  static const List<int> questionCountOptions = <int>[20, 50, 100];
+  static const List<int> durationMinutesOptions = <int>[15, 30, 45, 60];
   static const Duration examDuration = Duration(minutes: 60);
-
-  static int totalQuestions(int actualSubjectCount) =>
-      actualSubjectCount * questionsPerSubject;
 }
 
 class MockExamScreen extends ConsumerStatefulWidget {
@@ -51,11 +52,16 @@ class _MockExamScreenState extends ConsumerState<MockExamScreen> {
   Duration _remaining = MockExamConfig.examDuration;
   DateTime? _startedAt;
   List<Subject> _subjects = const <Subject>[];
+  List<ExamSession> _examSessions = const <ExamSession>[];
   List<Question>? _questions;
   final Map<int, int> _answers = <int, int>{};
   final Map<int, int> _subjectQuestionCounts = <int, int>{};
   int _currentIndex = 0;
   _MockExamMode? _mode;
+  _MockExamQuestionSource _questionSource = _MockExamQuestionSource.random;
+  int _selectedQuestionCount = 50;
+  int _selectedDurationMinutes = 60;
+  int? _selectedExamSessionId;
   _MockExamStage _stage = _MockExamStage.modeSelection;
   bool _loading = false;
   bool _submitting = false;
@@ -69,6 +75,8 @@ class _MockExamScreenState extends ConsumerState<MockExamScreen> {
     final progress = widget.resumeProgress;
     if (progress != null && progress.mode == 'mockPractice') {
       _resumePractice(progress);
+    } else {
+      _loadSelectionData();
     }
   }
 
@@ -146,6 +154,35 @@ class _MockExamScreenState extends ConsumerState<MockExamScreen> {
     }
   }
 
+  Future<void> _loadSelectionData() async {
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      final qualification = await _resolveQualification();
+      if (qualification == null) {
+        throw StateError('資格が選択されていません。');
+      }
+      final database = ref.read(questionsDatabaseProvider);
+      final sessions = await database.loadExamSessions(
+        databaseFileName: qualification.databaseFileName,
+      );
+      if (!mounted) return;
+      setState(() {
+        _examSessions = sessions.where((session) => session.questionCount > 0).toList(growable: false);
+        _selectedExamSessionId = _examSessions.isEmpty ? null : _examSessions.first.id;
+        _loading = false;
+      });
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _error = error.toString();
+      });
+    }
+  }
+
   Future<void> _selectMode(_MockExamMode mode) async {
     if (!await confirmDiscardInterruptedMockExam(context, ref)) return;
     if (!mounted) return;
@@ -153,7 +190,7 @@ class _MockExamScreenState extends ConsumerState<MockExamScreen> {
     setState(() {
       _mode = mode;
       _stage = _MockExamStage.subjectOverview;
-      _remaining = MockExamConfig.examDuration;
+      _remaining = Duration(minutes: _selectedDurationMinutes);
       _startedAt = null;
       _subjects = const <Subject>[];
       _questions = null;
@@ -165,6 +202,8 @@ class _MockExamScreenState extends ConsumerState<MockExamScreen> {
       _error = null;
     });
     await _loadSubjects();
+    if (!mounted || _error != null || _subjects.isEmpty) return;
+    await _startExam();
   }
 
   @override
@@ -208,23 +247,82 @@ class _MockExamScreenState extends ConsumerState<MockExamScreen> {
     }
   }
 
-  Future<List<Question>> _loadQuestionsBySubject({
+  Future<List<Question>> _loadConfiguredQuestions({
     required String databaseFileName,
   }) async {
     final database = ref.read(questionsDatabaseProvider);
     final selected = <Question>[];
-    _subjectQuestionCounts.clear();
 
-    for (final subject in _subjects) {
-      final subjectQuestions = await database.loadRandomQuestions(
+    if (_questionSource == _MockExamQuestionSource.examSession) {
+      final sessionId = _selectedExamSessionId;
+      if (sessionId == null) return const <Question>[];
+      final sessionQuestions = await database.loadQuestionsByExamSession(
         databaseFileName: databaseFileName,
-        subjectId: subject.id,
-        limit: MockExamConfig.questionsPerSubject,
+        examSessionId: sessionId,
       );
-      _subjectQuestionCounts[subject.id] = subjectQuestions.length;
-      selected.addAll(subjectQuestions);
+      sessionQuestions.shuffle();
+      selected.addAll(sessionQuestions.take(_selectedQuestionCount));
+    } else {
+      // Keep the legacy mock-exam behavior: distribute questions evenly
+      // across the active subjects, then fill any shortage from the full pool.
+      final subjectCount = _subjects.length;
+      if (subjectCount == 0) return const <Question>[];
+
+      final baseCount = _selectedQuestionCount ~/ subjectCount;
+      final remainder = _selectedQuestionCount % subjectCount;
+      final selectedCodes = <String>{};
+
+      for (var i = 0; i < subjectCount; i++) {
+        final requestedCount = baseCount + (i < remainder ? 1 : 0);
+        final subjectQuestions = await database.loadRandomQuestions(
+          databaseFileName: databaseFileName,
+          subjectId: _subjects[i].id,
+          limit: requestedCount,
+        );
+        for (final question in subjectQuestions) {
+          if (selectedCodes.add(question.questionCode)) {
+            selected.add(question);
+          }
+        }
+      }
+
+      final shortage = _selectedQuestionCount - selected.length;
+      if (shortage > 0) {
+        final fallbackQuestions = await database.loadRandomQuestions(
+          databaseFileName: databaseFileName,
+          limit: _selectedQuestionCount * 2,
+        );
+        for (final question in fallbackQuestions) {
+          if (selectedCodes.add(question.questionCode)) {
+            selected.add(question);
+            if (selected.length >= _selectedQuestionCount) break;
+          }
+        }
+      }
     }
 
+    final subjectOrder = <int, int>{
+      for (var i = 0; i < _subjects.length; i++) _subjects[i].id: i,
+    };
+    selected.sort((a, b) {
+      final aOrder = subjectOrder[a.subjectId] ?? subjectOrder.length;
+      final bOrder = subjectOrder[b.subjectId] ?? subjectOrder.length;
+      return aOrder.compareTo(bOrder);
+    });
+    final activeSubjectIds = selected
+        .map((question) => question.subjectId)
+        .whereType<int>()
+        .toSet();
+    _subjects = _subjects
+        .where((subject) => activeSubjectIds.contains(subject.id))
+        .toList(growable: false);
+    _subjectQuestionCounts.clear();
+    for (final question in selected) {
+      final subjectId = question.subjectId;
+      if (subjectId != null) {
+        _subjectQuestionCounts[subjectId] = (_subjectQuestionCounts[subjectId] ?? 0) + 1;
+      }
+    }
     return selected;
   }
 
@@ -243,7 +341,7 @@ class _MockExamScreenState extends ConsumerState<MockExamScreen> {
         throw StateError('資格が選択されていません。');
       }
 
-      final questions = await _loadQuestionsBySubject(
+      final questions = await _loadConfiguredQuestions(
         databaseFileName: qualification.databaseFileName,
       );
       if (!mounted) return;
@@ -685,6 +783,9 @@ class _MockExamScreenState extends ConsumerState<MockExamScreen> {
     final mode = _mode;
     return Scaffold(
       appBar: AppBar(
+        leading: const AppHomeButton(),
+        automaticallyImplyLeading: false,
+        flexibleSpace: const AppBarBackground(),
         title: Text(
           mode == _MockExamMode.exam
               ? '模擬試験・本試験モード'
@@ -720,43 +821,173 @@ class _MockExamScreenState extends ConsumerState<MockExamScreen> {
     );
   }
 
+  ExamSession? get _selectedExamSession {
+    final sessionId = _selectedExamSessionId;
+    if (sessionId == null) return null;
+    for (final session in _examSessions) {
+      if (session.id == sessionId) return session;
+    }
+    return null;
+  }
+
+  bool _isQuestionCountAvailable(int count) {
+    if (_questionSource == _MockExamQuestionSource.random) return true;
+    final session = _selectedExamSession;
+    return session != null && count <= session.questionCount;
+  }
+
+  void _normalizeQuestionCountForSelectedSession() {
+    if (_questionSource != _MockExamQuestionSource.examSession) return;
+    final session = _selectedExamSession;
+    if (session == null || _isQuestionCountAvailable(_selectedQuestionCount)) {
+      return;
+    }
+    final available = MockExamConfig.questionCountOptions
+        .where((count) => count <= session.questionCount)
+        .toList(growable: false);
+    _selectedQuestionCount = available.isEmpty ? session.questionCount : available.last;
+  }
+
   Widget _buildModeSelection(BuildContext context) {
+    if (_loading) return const Center(child: CircularProgressIndicator());
+    if (_error != null) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Text(_error!, textAlign: TextAlign.center),
+        ),
+      );
+    }
+
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 20, 16, 28),
       children: [
-        Text('モードを選択', style: Theme.of(context).textTheme.headlineSmall),
-        const SizedBox(height: 8),
-        Text(
-          '本試験モード・練習モードとも、全問題の回答後にまとめて採点します。練習モードは途中で中断・再開できます。',
-          style: Theme.of(context).textTheme.bodyMedium,
-        ),
+        Text('模擬試験設定', style: Theme.of(context).textTheme.headlineSmall),
         const SizedBox(height: 20),
-        _ModeSelectionCard(
-          icon: Icons.timer_outlined,
-          title: '本試験モード',
-          description: '制限時間60分。試験中は正解を表示せず、最後にまとめて採点します。',
-          onTap: () => _selectMode(_MockExamMode.exam),
+        _MockExamSettingCard(
+          title: '問題数設定',
+          child: SegmentedButton<int>(
+            segments: [
+              for (final count in MockExamConfig.questionCountOptions)
+                ButtonSegment(
+                  value: count,
+                  label: Text('$count問'),
+                  enabled: _isQuestionCountAvailable(count),
+                ),
+            ],
+            selected: <int>{_selectedQuestionCount},
+            onSelectionChanged: (values) => setState(() => _selectedQuestionCount = values.first),
+          ),
         ),
         const SizedBox(height: 12),
-        _ModeSelectionCard(
-          icon: Icons.school_outlined,
-          title: '練習モード',
-          description: '時間制限なし。途中で中断・再開でき、最後にまとめて採点します。',
-          onTap: () => _selectMode(_MockExamMode.practice),
+        _MockExamSettingCard(
+          title: '制限時間',
+          child: SegmentedButton<int>(
+            segments: [
+              for (final minutes in MockExamConfig.durationMinutesOptions)
+                ButtonSegment(value: minutes, label: Text('$minutes分')),
+            ],
+            selected: <int>{_selectedDurationMinutes},
+            onSelectionChanged: (values) => setState(() => _selectedDurationMinutes = values.first),
+          ),
+        ),
+        const SizedBox(height: 12),
+        _MockExamSettingCard(
+          title: '出題形式',
+          child: RadioGroup<_MockExamQuestionSource>(
+            groupValue: _questionSource,
+            onChanged: (value) {
+              if (value != null) {
+                setState(() {
+                  _questionSource = value;
+                  _normalizeQuestionCountForSelectedSession();
+                });
+              }
+            },
+            child: Column(
+              children: [
+                const RadioListTile<_MockExamQuestionSource>(
+                  contentPadding: EdgeInsets.zero,
+                  title: Text('ランダム出題'),
+                  value: _MockExamQuestionSource.random,
+                ),
+                RadioListTile<_MockExamQuestionSource>(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('年度期別過去問'),
+                  value: _MockExamQuestionSource.examSession,
+                  enabled: _examSessions.isNotEmpty,
+                ),
+                if (_questionSource == _MockExamQuestionSource.examSession) ...[
+                  const SizedBox(height: 4),
+                  DropdownButtonFormField<int>(
+                    initialValue: _selectedExamSessionId,
+                  decoration: const InputDecoration(
+                    labelText: '年度・期を選択',
+                    border: OutlineInputBorder(),
+                  ),
+                  items: [
+                    for (final session in _examSessions)
+                      DropdownMenuItem(
+                        value: session.id,
+                        child: Text('${session.displayName}（${session.questionCount}問）'),
+                      ),
+                  ],
+                  onChanged: (value) => setState(() {
+                    _selectedExamSessionId = value;
+                    _normalizeQuestionCountForSelectedSession();
+                  }),
+                ),
+                ],
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 20),
+        SizedBox(
+          width: double.infinity,
+          child: OutlinedButton.icon(
+            onPressed: _canStartConfiguredExam ? () => _selectMode(_MockExamMode.practice) : null,
+            icon: const Icon(Icons.school_outlined),
+            label: const Padding(
+              padding: EdgeInsets.symmetric(vertical: 13),
+              child: Text('練習モード'),
+            ),
+          ),
+        ),
+        const SizedBox(height: 12),
+        SizedBox(
+          width: double.infinity,
+          child: FilledButton.icon(
+            onPressed: _canStartConfiguredExam ? () => _selectMode(_MockExamMode.exam) : null,
+            icon: const Icon(Icons.timer_outlined),
+            label: const Padding(
+              padding: EdgeInsets.symmetric(vertical: 13),
+              child: Text('本試験モード'),
+            ),
+          ),
+        ),
+        const SizedBox(height: 10),
+        Text(
+          '練習モードは途中で中断・再開できます。本試験モードは選択した制限時間で自動採点します。',
+          style: Theme.of(context).textTheme.bodySmall,
+          textAlign: TextAlign.center,
         ),
       ],
     );
   }
 
+  bool get _canStartConfiguredExam =>
+      _questionSource == _MockExamQuestionSource.random || _selectedExamSessionId != null;
+
   Widget _buildSubjectOverview(BuildContext context) {
-    final expectedTotal = MockExamConfig.totalQuestions(_subjects.length);
+    final expectedTotal = _selectedQuestionCount;
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 20, 16, 28),
       children: [
         Text('試験科目', style: Theme.of(context).textTheme.headlineSmall),
         const SizedBox(height: 8),
         Text(
-          '各科目から${MockExamConfig.questionsPerSubject}問ずつ、登録済み問題をランダムに出題します。',
+          '選択した設定で問題を出題します。',
         ),
         const SizedBox(height: 20),
         for (var i = 0; i < _subjects.length; i++)
@@ -765,7 +996,7 @@ class _MockExamScreenState extends ConsumerState<MockExamScreen> {
             child: ListTile(
               leading: CircleAvatar(child: Text('${i + 1}')),
               title: Text(_subjects[i].name),
-              trailing: Text('${MockExamConfig.questionsPerSubject}問'),
+              trailing: Text('${_subjectQuestionCounts[_subjects[i].id] ?? 0}問'),
             ),
           ),
         const SizedBox(height: 8),
@@ -1048,46 +1279,25 @@ class _QuestionListLegend extends StatelessWidget {
   }
 }
 
-class _ModeSelectionCard extends StatelessWidget {
-  const _ModeSelectionCard({
-    required this.icon,
-    required this.title,
-    required this.description,
-    required this.onTap,
-  });
+class _MockExamSettingCard extends StatelessWidget {
+  const _MockExamSettingCard({required this.title, required this.child});
 
-  final IconData icon;
   final String title;
-  final String description;
-  final VoidCallback onTap;
+  final Widget child;
 
   @override
   Widget build(BuildContext context) {
     return Card(
       margin: EdgeInsets.zero,
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.all(18),
-          child: Row(
-            children: [
-              Icon(icon, size: 36),
-              const SizedBox(width: 16),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(title, style: Theme.of(context).textTheme.titleLarge),
-                    const SizedBox(height: 6),
-                    Text(description),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 8),
-              const Icon(Icons.chevron_right),
-            ],
-          ),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(title, style: Theme.of(context).textTheme.titleMedium),
+            const SizedBox(height: 12),
+            child,
+          ],
         ),
       ),
     );
@@ -1184,7 +1394,12 @@ class MockExamResultScreen extends StatelessWidget {
     final subjectResults = _buildSubjectResults(questions, answers);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('模擬試験結果')),
+      appBar: AppBar(
+        leading: const AppHomeButton(),
+        automaticallyImplyLeading: false,
+        title: const Text('模擬試験結果'),
+        flexibleSpace: const AppBarBackground(),
+      ),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(16, 16, 16, 28),
         children: [
@@ -1218,19 +1433,6 @@ class MockExamResultScreen extends StatelessWidget {
               ),
             ),
           ),
-          if (total < MockExamConfig.subjectCount * MockExamConfig.questionsPerSubject) ...[
-            const SizedBox(height: 12),
-            Card(
-              margin: EdgeInsets.zero,
-              child: Padding(
-                padding: const EdgeInsets.all(14),
-                child: Text(
-                  '登録済みの問題数が不足しているため、今回は$total問で実施しました。'
-                  '正式データでは5科目×10問の50問を出題します。',
-                ),
-              ),
-            ),
-          ],
           if (wrongIndexes.isNotEmpty) ...[
             const SizedBox(height: 12),
             FilledButton.icon(
@@ -1363,7 +1565,12 @@ class _MockExamQuestionDetailScreen extends StatelessWidget {
         question.isCorrectChoice(selectedChoice!);
 
     return Scaffold(
-      appBar: AppBar(title: Text('問題 $questionNumber')),
+      appBar: AppBar(
+        leading: const AppHomeButton(),
+        automaticallyImplyLeading: false,
+        title: Text('問題 $questionNumber'),
+        flexibleSpace: const AppBarBackground(),
+      ),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
@@ -1529,7 +1736,12 @@ class _WrongAnswerReviewScreenState extends State<_WrongAnswerReviewScreen> {
         question.isCorrectChoice(_selectedChoice!);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('間違えた問題の復習')),
+      appBar: AppBar(
+        leading: const AppHomeButton(),
+        automaticallyImplyLeading: false,
+        title: const Text('間違えた問題の復習'),
+        flexibleSpace: const AppBarBackground(),
+      ),
       body: Column(
         children: [
           LinearProgressIndicator(value: (_index + 1) / widget.questions.length),
