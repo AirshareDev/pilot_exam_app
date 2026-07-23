@@ -2,6 +2,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
+import '../../../design/app_colors.dart';
 import '../../../models/learning_results.dart';
 
 class SubjectRadarChart extends StatelessWidget {
@@ -61,11 +62,11 @@ class _SubjectRadarPainter extends CustomPainter {
       ..color = colorScheme.outlineVariant;
     final valuePaint = Paint()
       ..style = PaintingStyle.fill
-      ..color = colorScheme.primary.withValues(alpha:0.20);
+      ..color = AppColors.blue.withValues(alpha: 0.18);
     final valueBorderPaint = Paint()
       ..style = PaintingStyle.stroke
       ..strokeWidth = 2
-      ..color = colorScheme.primary;
+      ..color = AppColors.blue;
 
     for (var level = 1; level <= 5; level++) {
       final path = Path();

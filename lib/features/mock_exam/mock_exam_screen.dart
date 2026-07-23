@@ -57,6 +57,7 @@ class _MockExamScreenState extends ConsumerState<MockExamScreen> {
   List<Question>? _questions;
   final Map<int, int> _answers = <int, int>{};
   final Map<int, int> _subjectQuestionCounts = <int, int>{};
+  final ScrollController _questionScrollController = ScrollController();
   int _currentIndex = 0;
   _MockExamMode? _mode;
   _MockExamQuestionSource _questionSource = _MockExamQuestionSource.random;
@@ -210,6 +211,7 @@ class _MockExamScreenState extends ConsumerState<MockExamScreen> {
   @override
   void dispose() {
     _timer?.cancel();
+    _questionScrollController.dispose();
     super.dispose();
   }
 
@@ -589,6 +591,7 @@ class _MockExamScreenState extends ConsumerState<MockExamScreen> {
       _currentIndex = selectedIndex;
       _stage = _MockExamStage.answering;
     });
+    _scrollMockQuestionToTop();
   }
 
   Future<void> _interruptPractice() async {
@@ -993,6 +996,14 @@ class _MockExamScreenState extends ConsumerState<MockExamScreen> {
     );
   }
 
+  void _scrollMockQuestionToTop() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_questionScrollController.hasClients) {
+        _questionScrollController.jumpTo(0);
+      }
+    });
+  }
+
   bool get _canStartConfiguredExam =>
       _questionSource == _MockExamQuestionSource.random || _selectedExamSessionId != null;
 
@@ -1081,9 +1092,10 @@ class _MockExamScreenState extends ConsumerState<MockExamScreen> {
                 Text('$count問'),
                 const SizedBox(height: 24),
                 FilledButton(
-                  onPressed: () => setState(
-                    () => _stage = _MockExamStage.answering,
-                  ),
+                  onPressed: () {
+                    setState(() => _stage = _MockExamStage.answering);
+                    _scrollMockQuestionToTop();
+                  },
                   child: const Padding(
                     padding: EdgeInsets.symmetric(horizontal: 20, vertical: 10),
                     child: Text('この科目を始める'),
@@ -1147,7 +1159,8 @@ class _MockExamScreenState extends ConsumerState<MockExamScreen> {
         LinearProgressIndicator(value: (_currentIndex + 1) / questions.length),
         Expanded(
           child: ListView(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 20),
+            controller: _questionScrollController,
+            padding: const EdgeInsets.fromLTRB(18, 16, 18, 24),
             children: [
               Text(
                 subject?.name ?? question.subjectName ?? '試験科目',
@@ -1172,15 +1185,17 @@ class _MockExamScreenState extends ConsumerState<MockExamScreen> {
                 ),
               ],
               const SizedBox(height: 14),
-              Card(
-                margin: EdgeInsets.zero,
-                child: Padding(
-                  padding: const EdgeInsets.all(14),
+              RepaintBoundary(
+                child: Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 8),
                   child: Text(
                     question.questionText,
                     style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                          fontSize: 15,
-                          height: 1.5,
+                          fontSize: 16,
+                          height: 1.75,
+                          fontWeight: FontWeight.w600,
+                          color: AppColors.textPrimary,
                         ),
                   ),
                 ),
@@ -1218,7 +1233,10 @@ class _MockExamScreenState extends ConsumerState<MockExamScreen> {
                   child: OutlinedButton(
                     onPressed: _currentIndex == 0 || _submitting
                         ? null
-                        : () => setState(() => _currentIndex--),
+                        : () {
+                            setState(() => _currentIndex--);
+                            _scrollMockQuestionToTop();
+                          },
                     child: const Text('前へ'),
                   ),
                 ),
@@ -1249,6 +1267,7 @@ class _MockExamScreenState extends ConsumerState<MockExamScreen> {
                                       _stage = _MockExamStage.subjectIntro;
                                     }
                                   });
+                                  _scrollMockQuestionToTop();
                                 },
                           child: Text(
                             _isNextQuestionNewSubject() ? '次の科目へ' : '次へ',
@@ -1315,7 +1334,7 @@ class _MockExamModeButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final foreground = filled ? Colors.white : color;
+    final foreground = filled ? Colors.white : AppColors.navy;
     return Material(
       color: filled ? color : color.withValues(alpha: 0.075),
       borderRadius: BorderRadius.circular(18),
@@ -1360,7 +1379,9 @@ class _MockExamModeButton extends StatelessWidget {
                     Text(
                       description,
                       style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            color: foreground.withValues(alpha: 0.78),
+                            color: filled
+                                ? Colors.white.withValues(alpha: 0.82)
+                                : AppColors.textPrimary.withValues(alpha: 0.78),
                             height: 1.35,
                           ),
                     ),

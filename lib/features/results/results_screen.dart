@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../database/questions_database.dart';
+import '../../design/app_colors.dart';
 import '../../database/user_database.dart';
 import '../../models/learning_results.dart';
 import '../../shared/app_page.dart';
@@ -187,43 +188,73 @@ class _ResultsBodyState extends State<_ResultsBody> {
 
     return ListView(
       physics: const AlwaysScrollableScrollPhysics(),
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.fromLTRB(16, 18, 16, 28),
       children: [
-        Text(
-          results.qualificationName,
-          style: Theme.of(context).textTheme.titleMedium,
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          decoration: BoxDecoration(
+            color: AppColors.navy.withValues(alpha: 0.06),
+            borderRadius: BorderRadius.circular(14),
+          ),
+          child: Row(
+            children: [
+              const Icon(Icons.workspace_premium_outlined, color: AppColors.navy),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  results.qualificationName,
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        color: AppColors.navy,
+                        fontWeight: FontWeight.w800,
+                      ),
+                ),
+              ),
+            ],
+          ),
         ),
         if (!widget.historyOnly) ...[
-          const SizedBox(height: 12),
+          const SizedBox(height: 14),
           _OverviewCard(results: results),
-        if (weakest != null) ...[
-          const SizedBox(height: 12),
-          _WeakSubjectCard(subject: weakest),
-        ],
-        const SizedBox(height: 24),
-        Text('科目別成績', style: Theme.of(context).textTheme.titleLarge),
-        const SizedBox(height: 10),
-        Card(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(12, 16, 12, 8),
-            child: SubjectRadarChart(subjects: results.subjects),
+          if (weakest != null) ...[
+            const SizedBox(height: 12),
+            _WeakSubjectCard(subject: weakest),
+          ],
+          const SizedBox(height: 24),
+          _SectionTitle(
+            icon: Icons.radar_rounded,
+            title: '科目別成績',
+            subtitle: '得意・不得意を科目ごとに確認できます',
           ),
-        ),
-        const SizedBox(height: 10),
-        ...results.subjects.map(
-          (subject) => Padding(
-            padding: const EdgeInsets.only(bottom: 10),
-            child: _SubjectCard(subject: subject),
+          const SizedBox(height: 10),
+          Card(
+            margin: EdgeInsets.zero,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(12, 18, 12, 8),
+              child: SubjectRadarChart(subjects: results.subjects),
+            ),
           ),
-        ),
+          const SizedBox(height: 10),
+          ...results.subjects.map(
+            (subject) => Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: _SubjectCard(subject: subject),
+            ),
+          ),
           const SizedBox(height: 14),
         ],
-        Text('模擬試験履歴', style: Theme.of(context).textTheme.titleLarge),
+        _SectionTitle(
+          icon: Icons.history_rounded,
+          title: '模擬試験履歴',
+          subtitle: widget.historyOnly
+              ? '結果を開いて、間違えた問題を復習できます'
+              : 'これまでの受験結果を確認できます',
+        ),
         const SizedBox(height: 10),
         if (results.examHistory.isEmpty)
           const Card(
+            margin: EdgeInsets.zero,
             child: Padding(
-              padding: EdgeInsets.all(16),
+              padding: EdgeInsets.all(18),
               child: Text('保存された模擬試験結果はありません。'),
             ),
           )
@@ -240,49 +271,102 @@ class _ResultsBodyState extends State<_ResultsBody> {
         if (!widget.historyOnly) ...[
           const SizedBox(height: 14),
           Card(
-          clipBehavior: Clip.antiAlias,
-          child: Column(
-            children: [
-              ListTile(
-                title: Text(
-                  '最近の回答',
-                  style: Theme.of(context).textTheme.titleLarge,
+            margin: EdgeInsets.zero,
+            clipBehavior: Clip.antiAlias,
+            child: Column(
+              children: [
+                ListTile(
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                  leading: Container(
+                    width: 40,
+                    height: 40,
+                    decoration: BoxDecoration(
+                      color: AppColors.blue.withValues(alpha: 0.10),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: const Icon(Icons.fact_check_outlined, color: AppColors.navy),
+                  ),
+                  title: Text(
+                    '最近の回答',
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.w800,
+                        ),
+                  ),
+                  subtitle: Text('直近${results.recentAnswers.length}問'),
+                  trailing: Icon(
+                    _showRecentAnswers
+                        ? Icons.keyboard_arrow_up_rounded
+                        : Icons.keyboard_arrow_down_rounded,
+                  ),
+                  onTap: () => setState(
+                    () => _showRecentAnswers = !_showRecentAnswers,
+                  ),
                 ),
-                subtitle: Text('直近${results.recentAnswers.length}問'),
-                trailing: Icon(
-                  _showRecentAnswers
-                      ? Icons.keyboard_arrow_up
-                      : Icons.keyboard_arrow_down,
-                ),
-                onTap: () => setState(
-                  () => _showRecentAnswers = !_showRecentAnswers,
-                ),
-              ),
-              AnimatedSize(
-                duration: const Duration(milliseconds: 180),
-                alignment: Alignment.topCenter,
-                child: _showRecentAnswers
-                    ? Column(
-                        children: [
-                          const Divider(height: 1),
-                          for (var i = 0;
-                              i < results.recentAnswers.length;
-                              i++) ...[
-                            _RecentAnswerTile(
-                              answer: results.recentAnswers[i],
-                            ),
-                            if (i != results.recentAnswers.length - 1)
-                              const Divider(height: 1),
+                AnimatedSize(
+                  duration: const Duration(milliseconds: 180),
+                  alignment: Alignment.topCenter,
+                  child: _showRecentAnswers
+                      ? Column(
+                          children: [
+                            const Divider(height: 1),
+                            for (var i = 0;
+                                i < results.recentAnswers.length;
+                                i++) ...[
+                              _RecentAnswerTile(answer: results.recentAnswers[i]),
+                              if (i != results.recentAnswers.length - 1)
+                                const Divider(height: 1, indent: 70),
+                            ],
                           ],
-                        ],
-                      )
-                    : const SizedBox(width: double.infinity),
+                        )
+                      : const SizedBox(width: double.infinity),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+class _SectionTitle extends StatelessWidget {
+  const _SectionTitle({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+  });
+
+  final IconData icon;
+  final String title;
+  final String subtitle;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(icon, color: AppColors.navy, size: 22),
+        const SizedBox(width: 9),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                title,
+                style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                      fontWeight: FontWeight.w800,
+                    ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                subtitle,
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: AppColors.textSecondary,
+                    ),
               ),
             ],
           ),
-          ),
-        ],
-        const SizedBox(height: 24),
+        ),
       ],
     );
   }
@@ -296,28 +380,66 @@ class _OverviewCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Card(
+      margin: EdgeInsets.zero,
       child: Padding(
         padding: const EdgeInsets.all(18),
-        child: Column(
+        child: Row(
           children: [
-            Text('総合正答率', style: Theme.of(context).textTheme.titleMedium),
-            const SizedBox(height: 6),
-            Text(
-              _percent(results.accuracy),
-              style: Theme.of(context).textTheme.displaySmall?.copyWith(
-                    fontWeight: FontWeight.bold,
+            SizedBox(
+              width: 112,
+              height: 112,
+              child: Stack(
+                alignment: Alignment.center,
+                children: [
+                  SizedBox.expand(
+                    child: CircularProgressIndicator(
+                      value: results.accuracy,
+                      strokeWidth: 11,
+                      strokeCap: StrokeCap.round,
+                      backgroundColor: AppColors.blue.withValues(alpha: 0.10),
+                      color: AppColors.blue,
+                    ),
                   ),
+                  Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        _percent(results.accuracy),
+                        style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                              color: AppColors.navy,
+                              fontWeight: FontWeight.w900,
+                            ),
+                      ),
+                      Text(
+                        '総合正答率',
+                        style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                              color: AppColors.textSecondary,
+                            ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
             ),
-            const SizedBox(height: 12),
-            LinearProgressIndicator(value: results.accuracy),
-            const SizedBox(height: 18),
-            Row(
-              children: [
-                Expanded(child: _Metric(label: '回答', value: '${results.totalAnswers}回')),
-                Expanded(child: _Metric(label: '正解', value: '${results.correctAnswers}回')),
-                Expanded(child: _Metric(label: '不正解', value: '${results.wrongAnswers}回')),
-                Expanded(child: _Metric(label: '学習問題', value: '${results.answeredQuestions}問')),
-              ],
+            const SizedBox(width: 18),
+            Expanded(
+              child: Column(
+                children: [
+                  Row(
+                    children: [
+                      Expanded(child: _Metric(label: '回答', value: '${results.totalAnswers}回')),
+                      Expanded(child: _Metric(label: '正解', value: '${results.correctAnswers}回', color: AppColors.green)),
+                    ],
+                  ),
+                  const SizedBox(height: 14),
+                  Row(
+                    children: [
+                      Expanded(child: _Metric(label: '不正解', value: '${results.wrongAnswers}回', color: AppColors.red)),
+                      Expanded(child: _Metric(label: '学習問題', value: '${results.answeredQuestions}問')),
+                    ],
+                  ),
+                ],
+              ),
             ),
           ],
         ),
@@ -327,10 +449,11 @@ class _OverviewCard extends StatelessWidget {
 }
 
 class _Metric extends StatelessWidget {
-  const _Metric({required this.label, required this.value});
+  const _Metric({required this.label, required this.value, this.color});
 
   final String label;
   final String value;
+  final Color? color;
 
   @override
   Widget build(BuildContext context) {
@@ -342,6 +465,7 @@ class _Metric extends StatelessWidget {
           value,
           style: Theme.of(context).textTheme.titleMedium?.copyWith(
                 fontWeight: FontWeight.bold,
+                color: color ?? AppColors.navy,
               ),
         ),
       ],
@@ -357,10 +481,27 @@ class _WeakSubjectCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Card(
+      margin: EdgeInsets.zero,
+      color: AppColors.orange.withValues(alpha: 0.07),
       child: ListTile(
-        leading: const Icon(Icons.trending_down),
-        title: const Text('復習候補'),
-        subtitle: Text('${subject.subjectName}・正答率 ${_percent(subject.accuracy)}'),
+        leading: Container(
+          width: 42,
+          height: 42,
+          decoration: BoxDecoration(
+            color: AppColors.orange.withValues(alpha: 0.14),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: const Icon(Icons.refresh_rounded, color: AppColors.orange),
+        ),
+        title: const Text('優先して復習したい科目'),
+        subtitle: Text(subject.subjectName),
+        trailing: Text(
+          _percent(subject.accuracy),
+          style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                color: AppColors.orange,
+                fontWeight: FontWeight.w900,
+              ),
+        ),
       ),
     );
   }
@@ -373,32 +514,63 @@ class _SubjectCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final color = subject.accuracy >= 0.8
+        ? AppColors.green
+        : subject.accuracy >= 0.6
+            ? AppColors.blue
+            : AppColors.orange;
     return Card(
+      margin: EdgeInsets.zero,
       child: Padding(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(15),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
               children: [
+                Container(
+                  width: 34,
+                  height: 34,
+                  decoration: BoxDecoration(
+                    color: color.withValues(alpha: 0.11),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Icon(Icons.menu_book_rounded, color: color, size: 19),
+                ),
+                const SizedBox(width: 10),
                 Expanded(
-                  child: Text(subject.subjectName,
-                      style: Theme.of(context).textTheme.titleMedium),
+                  child: Text(
+                    subject.subjectName,
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.w800,
+                        ),
+                  ),
                 ),
                 Text(
                   _percent(subject.accuracy),
                   style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.bold,
+                        color: color,
+                        fontWeight: FontWeight.w900,
                       ),
                 ),
               ],
             ),
-            const SizedBox(height: 10),
-            LinearProgressIndicator(value: subject.accuracy),
+            const SizedBox(height: 12),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(6),
+              child: LinearProgressIndicator(
+                value: subject.accuracy,
+                minHeight: 8,
+                color: color,
+                backgroundColor: color.withValues(alpha: 0.10),
+              ),
+            ),
             const SizedBox(height: 8),
             Text(
               '${subject.totalAnswers}回回答　正解 ${subject.correctAnswers}回　不正解 ${subject.wrongAnswers}回',
-              style: Theme.of(context).textTheme.bodySmall,
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: AppColors.textSecondary,
+                  ),
             ),
           ],
         ),
@@ -415,60 +587,69 @@ class _ExamHistoryCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final rateColor = exam.accuracy >= 0.8
+        ? AppColors.green
+        : exam.accuracy >= 0.6
+            ? AppColors.orange
+            : AppColors.red;
     return Card(
+      margin: EdgeInsets.zero,
       clipBehavior: Clip.antiAlias,
       child: InkWell(
         onTap: exam.answers.isEmpty ? null : onTap,
         child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    _formatDateTime(exam.completedAt),
-                    style: Theme.of(context).textTheme.titleMedium,
-                  ),
+          padding: const EdgeInsets.all(15),
+          child: Row(
+            children: [
+              Container(
+                width: 54,
+                height: 54,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: rateColor.withValues(alpha: 0.11),
+                  shape: BoxShape.circle,
                 ),
-                Text(
+                child: Text(
                   _percent(exam.accuracy),
                   style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.bold,
+                        color: rateColor,
+                        fontWeight: FontWeight.w900,
                       ),
                 ),
-              ],
-            ),
-            const SizedBox(height: 6),
-            Text(
-              '合計 ${exam.correctQuestions} / ${exam.totalQuestions}問',
-              style: Theme.of(context).textTheme.bodyMedium,
-            ),
-            if (exam.subjects.isNotEmpty) ...[
-              const Divider(height: 24),
-              for (final subject in exam.subjects)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 6),
-                  child: Row(
-                    children: [
-                      Expanded(child: Text(subject.subjectName)),
+              ),
+              const SizedBox(width: 13),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      _formatDateTime(exam.completedAt),
+                      style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                            fontWeight: FontWeight.w800,
+                          ),
+                    ),
+                    const SizedBox(height: 5),
+                    Text(
+                      '${exam.correctQuestions} / ${exam.totalQuestions}問 正解',
+                      style: Theme.of(context).textTheme.bodyMedium,
+                    ),
+                    if (exam.answers.isEmpty) ...[
+                      const SizedBox(height: 3),
                       Text(
-                        '正解 ${subject.correctQuestions}　不正解 ${subject.wrongQuestions}',
+                        '問題別データなし',
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                              color: AppColors.textSecondary,
+                            ),
                       ),
                     ],
-                  ),
+                  ],
                 ),
-            ] else ...[
-              const SizedBox(height: 8),
-              Text(
-                '科目別内訳は、この更新後に実施した試験から表示されます。',
-                style: Theme.of(context).textTheme.bodySmall,
               ),
+              if (exam.answers.isNotEmpty)
+                const Icon(Icons.chevron_right_rounded, color: AppColors.navy),
             ],
-          ],
+          ),
         ),
-      ),
       ),
     );
   }
@@ -481,13 +662,45 @@ class _RecentAnswerTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final color = answer.isCorrect ? AppColors.green : AppColors.red;
     return ListTile(
-      leading: Icon(
-        answer.isCorrect ? Icons.check_circle_outline : Icons.cancel_outlined,
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 3),
+      leading: Container(
+        width: 38,
+        height: 38,
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: 0.10),
+          borderRadius: BorderRadius.circular(11),
+        ),
+        child: Icon(
+          answer.isCorrect ? Icons.check_rounded : Icons.close_rounded,
+          color: color,
+        ),
       ),
-      title: Text(answer.questionLabel),
-      subtitle: Text('${answer.subjectName}　${_formatDateTime(answer.answeredAt)}'),
-      trailing: Text(answer.isCorrect ? '正解' : '不正解'),
+      title: Text(
+        answer.questionLabel,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+      ),
+      subtitle: Text(
+        '${answer.subjectName}　${_formatDateTime(answer.answeredAt)}',
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+      ),
+      trailing: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: 0.10),
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: Text(
+          answer.isCorrect ? '正解' : '不正解',
+          style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                color: color,
+                fontWeight: FontWeight.w800,
+              ),
+        ),
+      ),
     );
   }
 }
