@@ -365,7 +365,7 @@ class _LearningMenuGrid extends StatelessWidget {
         crossAxisCount: 2,
         crossAxisSpacing: 12,
         mainAxisSpacing: 12,
-        childAspectRatio: 1.06,
+        childAspectRatio: 1.42,
       ),
       itemBuilder: (context, index) => _MenuGridCard(item: items[index]),
     );
@@ -379,35 +379,48 @@ class _MenuGridCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final enabled = item.onTap != null;
-    return AppCard(
-      onTap: item.onTap,
-      padding: const EdgeInsets.all(16),
-      child: Opacity(
-        opacity: enabled ? 1 : 0.45,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Container(
-              width: 44,
-              height: 44,
-              decoration: BoxDecoration(
-                color: item.color.withValues(alpha: 0.12),
-                borderRadius: BorderRadius.circular(13),
-              ),
-              child: Icon(item.icon, color: item.color, size: 25),
+    return Card(
+      margin: EdgeInsets.zero,
+      color: item.color.withValues(alpha: 0.085),
+      surfaceTintColor: Colors.transparent,
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: BorderSide(color: item.color.withValues(alpha: 0.34)),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: item.onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+          child: Opacity(
+            opacity: enabled ? 1 : 0.45,
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(item.icon, color: item.color, size: 30),
+                const SizedBox(height: 7),
+                Text(
+                  item.label,
+                  textAlign: TextAlign.center,
+                  style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                        color: item.color,
+                        fontWeight: FontWeight.w800,
+                      ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  item.description,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.center,
+                  style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                        color: AppColors.textSecondary,
+                      ),
+                ),
+              ],
             ),
-            const Spacer(),
-            Text(item.label, style: Theme.of(context).textTheme.titleSmall),
-            const SizedBox(height: 4),
-            Text(
-              item.description,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: AppColors.textSecondary,
-                  ),
-            ),
-          ],
+          ),
         ),
       ),
     );

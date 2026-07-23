@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../design/app_app_bar.dart';
 import '../../database/questions_database.dart';
+import '../../design/app_colors.dart';
 import '../../database/user_database.dart';
 import '../../models/exam_session.dart';
 import '../../models/learning_results.dart';
@@ -873,8 +874,21 @@ class _MockExamScreenState extends ConsumerState<MockExamScreen> {
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 20, 16, 28),
       children: [
-        Text('模擬試験設定', style: Theme.of(context).textTheme.headlineSmall),
-        const SizedBox(height: 20),
+        Text(
+          '模擬試験の設定',
+          style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                fontWeight: FontWeight.w800,
+                color: AppColors.navy,
+              ),
+        ),
+        const SizedBox(height: 6),
+        Text(
+          '出題条件を選択して、練習または本試験モードを開始します。',
+          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                color: AppColors.textSecondary,
+              ),
+        ),
+        const SizedBox(height: 18),
         _MockExamSettingCard(
           title: '問題数設定',
           child: SegmentedButton<int>(
@@ -953,35 +967,27 @@ class _MockExamScreenState extends ConsumerState<MockExamScreen> {
             ),
           ),
         ),
-        const SizedBox(height: 20),
-        SizedBox(
-          width: double.infinity,
-          child: OutlinedButton.icon(
-            onPressed: _canStartConfiguredExam ? () => _selectMode(_MockExamMode.practice) : null,
-            icon: const Icon(Icons.school_outlined),
-            label: const Padding(
-              padding: EdgeInsets.symmetric(vertical: 13),
-              child: Text('練習モード'),
-            ),
-          ),
+        const SizedBox(height: 18),
+        _MockExamModeButton(
+          title: '練習モード',
+          description: '時間制限なし。途中で中断・再開できます。',
+          icon: Icons.school_rounded,
+          color: AppColors.green,
+          filled: false,
+          onPressed: _canStartConfiguredExam
+              ? () => _selectMode(_MockExamMode.practice)
+              : null,
         ),
         const SizedBox(height: 12),
-        SizedBox(
-          width: double.infinity,
-          child: FilledButton.icon(
-            onPressed: _canStartConfiguredExam ? () => _selectMode(_MockExamMode.exam) : null,
-            icon: const Icon(Icons.timer_outlined),
-            label: const Padding(
-              padding: EdgeInsets.symmetric(vertical: 13),
-              child: Text('本試験モード'),
-            ),
-          ),
-        ),
-        const SizedBox(height: 10),
-        Text(
-          '練習モードは途中で中断・再開できます。本試験モードは選択した制限時間で自動採点します。',
-          style: Theme.of(context).textTheme.bodySmall,
-          textAlign: TextAlign.center,
+        _MockExamModeButton(
+          title: '本試験モード',
+          description: '制限時間内に解答し、最後にまとめて採点します。',
+          icon: Icons.timer_rounded,
+          color: AppColors.navy,
+          filled: true,
+          onPressed: _canStartConfiguredExam
+              ? () => _selectMode(_MockExamMode.exam)
+              : null,
         ),
       ],
     );
@@ -1290,6 +1296,86 @@ class _QuestionListLegend extends StatelessWidget {
   }
 }
 
+class _MockExamModeButton extends StatelessWidget {
+  const _MockExamModeButton({
+    required this.title,
+    required this.description,
+    required this.icon,
+    required this.color,
+    required this.filled,
+    required this.onPressed,
+  });
+
+  final String title;
+  final String description;
+  final IconData icon;
+  final Color color;
+  final bool filled;
+  final VoidCallback? onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final foreground = filled ? Colors.white : color;
+    return Material(
+      color: filled ? color : color.withValues(alpha: 0.075),
+      borderRadius: BorderRadius.circular(18),
+      child: InkWell(
+        onTap: onPressed,
+        borderRadius: BorderRadius.circular(18),
+        child: Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 17),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(
+              color: filled ? color : color.withValues(alpha: 0.35),
+            ),
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 48,
+                height: 48,
+                decoration: BoxDecoration(
+                  color: filled
+                      ? Colors.white.withValues(alpha: 0.16)
+                      : Colors.white,
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(icon, color: foreground, size: 27),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                            color: foreground,
+                            fontWeight: FontWeight.w800,
+                          ),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      description,
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            color: foreground.withValues(alpha: 0.78),
+                            height: 1.35,
+                          ),
+                    ),
+                  ],
+                ),
+              ),
+              Icon(Icons.chevron_right_rounded, color: foreground),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _MockExamSettingCard extends StatelessWidget {
   const _MockExamSettingCard({required this.title, required this.child});
 
@@ -1300,6 +1386,11 @@ class _MockExamSettingCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return Card(
       margin: EdgeInsets.zero,
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: const BorderSide(color: AppColors.border),
+      ),
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
@@ -1332,16 +1423,14 @@ class _MockExamChoiceCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
-      color: isSelected ? colorScheme.secondaryContainer : null,
+      color: isSelected ? AppColors.navy.withValues(alpha: 0.055) : Colors.white,
       shape: RoundedRectangleBorder(
         side: BorderSide(
           color: isSelected
-              ? colorScheme.secondary
-              : colorScheme.outlineVariant,
+              ? AppColors.navy.withValues(alpha: 0.65)
+              : AppColors.border,
           width: isSelected ? 2 : 1,
         ),
         borderRadius: BorderRadius.circular(12),
@@ -1366,7 +1455,7 @@ class _MockExamChoiceCard extends StatelessWidget {
               ),
               if (isSelected) ...[
                 const SizedBox(width: 8),
-                Icon(Icons.check, color: colorScheme.secondary),
+                const Icon(Icons.check_circle_rounded, color: AppColors.navy),
               ],
             ],
           ),
@@ -1419,28 +1508,60 @@ class MockExamResultScreen extends StatelessWidget {
             margin: EdgeInsets.zero,
             child: Padding(
               padding: const EdgeInsets.all(20),
-              child: Column(
+              child: Row(
                 children: [
-                  Icon(
-                    passed ? Icons.verified_outlined : Icons.refresh_outlined,
-                    size: 64,
-                  ),
-                  const SizedBox(height: 12),
-                  Text(
-                    passed ? '合格基準達成' : '復習が必要です',
-                    style: Theme.of(context).textTheme.headlineSmall,
-                  ),
-                  const SizedBox(height: 12),
-                  Text(
-                    '${score.toStringAsFixed(0)}%',
-                    style: Theme.of(context).textTheme.displayMedium?.copyWith(
-                          fontWeight: FontWeight.bold,
+                  SizedBox.square(
+                    dimension: 132,
+                    child: Stack(
+                      alignment: Alignment.center,
+                      children: [
+                        SizedBox.square(
+                          dimension: 116,
+                          child: CircularProgressIndicator(
+                            value: score / 100,
+                            strokeWidth: 11,
+                            backgroundColor: AppColors.border,
+                            color: passed ? AppColors.blue : AppColors.orange,
+                            strokeCap: StrokeCap.round,
+                          ),
                         ),
+                        Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              '${score.toStringAsFixed(0)}%',
+                              style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                                    fontWeight: FontWeight.w900,
+                                    color: AppColors.navy,
+                                  ),
+                            ),
+                            Text('正答率', style: Theme.of(context).textTheme.labelMedium),
+                          ],
+                        ),
+                      ],
+                    ),
                   ),
-                  const SizedBox(height: 6),
-                  Text('$total問中 $correct問正解'),
-                  const SizedBox(height: 4),
-                  Text('所要時間：${_formatDuration(elapsed)}'),
+                  const SizedBox(width: 18),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          passed ? '合格基準達成' : '復習が必要です',
+                          style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                                fontWeight: FontWeight.w800,
+                                color: passed ? AppColors.green : AppColors.orange,
+                              ),
+                        ),
+                        const SizedBox(height: 10),
+                        Text('$total問中 $correct問正解'),
+                        const SizedBox(height: 5),
+                        Text('不正解 ${total - correct}問'),
+                        const SizedBox(height: 5),
+                        Text('所要時間 ${_formatDuration(elapsed)}'),
+                      ],
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -1691,12 +1812,12 @@ class _ReviewChoiceCard extends StatelessWidget {
     IconData? icon;
 
     if (isCorrect) {
-      backgroundColor = colorScheme.primaryContainer;
-      borderColor = colorScheme.primary;
+      backgroundColor = AppColors.green.withValues(alpha: 0.075);
+      borderColor = AppColors.green.withValues(alpha: 0.55);
       icon = Icons.check_circle;
     } else if (isSelected) {
-      backgroundColor = colorScheme.errorContainer;
-      borderColor = colorScheme.error;
+      backgroundColor = AppColors.red.withValues(alpha: 0.065);
+      borderColor = AppColors.red.withValues(alpha: 0.48);
       icon = Icons.cancel;
     }
 

@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../design/app_colors.dart';
 import '../../models/learning_session_progress.dart';
 import '../../models/question.dart';
 import '../../models/question_learning_status.dart';
@@ -220,13 +221,16 @@ class _RandomQuestionScreenState extends ConsumerState<RandomQuestionScreen> {
       children: [
         LinearProgressIndicator(
           value: (_currentIndex + 1) / questions.length,
+          minHeight: 4,
+          backgroundColor: AppColors.blue.withValues(alpha: 0.10),
+          color: AppColors.blue,
         ),
         Expanded(
           child: Scrollbar(
             controller: _scrollController,
             child: ListView(
               controller: _scrollController,
-              padding: const EdgeInsets.fromLTRB(16, 12, 16, 20),
+              padding: const EdgeInsets.fromLTRB(18, 16, 18, 24),
               children: [
                 ValueListenableBuilder<_AnswerViewState?>(
                   valueListenable: _answerState,
@@ -260,17 +264,17 @@ class _RandomQuestionScreenState extends ConsumerState<RandomQuestionScreen> {
                 ),
                 const SizedBox(height: 14),
                 RepaintBoundary(
-                  child: Card(
-                    margin: EdgeInsets.zero,
-                    child: Padding(
-                      padding: const EdgeInsets.all(14),
-                      child: Text(
-                        question.text,
-                        style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                              fontSize: 15,
-                              height: 1.5,
-                            ),
-                      ),
+                  child: Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 8),
+                    child: Text(
+                      question.text,
+                      style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                            fontSize: 16,
+                            height: 1.75,
+                            fontWeight: FontWeight.w600,
+                            color: AppColors.textPrimary,
+                          ),
                     ),
                   ),
                 ),
@@ -310,18 +314,36 @@ class _RandomQuestionScreenState extends ConsumerState<RandomQuestionScreen> {
           valueListenable: _answerState,
           builder: (context, state, child) {
             if (state?.isAnswered != true) return const SizedBox.shrink();
-            return SafeArea(
-              top: false,
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-                child: SizedBox(
-                  width: double.infinity,
-                  child: FilledButton(
-                    onPressed: () => _goToNextQuestion(questions),
-                    child: Text(
-                      _currentIndex == questions.length - 1
-                          ? '結果を見る'
-                          : '次の問題',
+            return Container(
+              decoration: BoxDecoration(
+                color: Colors.white,
+                border: Border(top: BorderSide(color: AppColors.border)),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.04),
+                    blurRadius: 12,
+                    offset: const Offset(0, -3),
+                  ),
+                ],
+              ),
+              child: SafeArea(
+                top: false,
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(18, 12, 18, 16),
+                  child: SizedBox(
+                    width: double.infinity,
+                    child: FilledButton.icon(
+                      onPressed: () => _goToNextQuestion(questions),
+                      icon: Icon(
+                        _currentIndex == questions.length - 1
+                            ? Icons.analytics_outlined
+                            : Icons.arrow_forward_rounded,
+                      ),
+                      label: Text(
+                        _currentIndex == questions.length - 1
+                            ? '結果を見る'
+                            : '次の問題',
+                      ),
                     ),
                   ),
                 ),
@@ -634,15 +656,28 @@ class _QuestionHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        Text(
-          '問題 ${currentIndex + 1} / $totalCount',
-          style: Theme.of(context).textTheme.titleMedium,
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+          decoration: BoxDecoration(
+            color: AppColors.blue.withValues(alpha: 0.10),
+            borderRadius: BorderRadius.circular(20),
+          ),
+          child: Text(
+            '問題 ${currentIndex + 1} / $totalCount',
+            style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                  color: AppColors.navy,
+                  fontWeight: FontWeight.w800,
+                ),
+          ),
         ),
+        const Spacer(),
         Text(
-          '正解 $correctCount',
-          style: Theme.of(context).textTheme.bodyMedium,
+          '正解数 $correctCount',
+          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                color: AppColors.textSecondary,
+                fontWeight: FontWeight.w600,
+              ),
         ),
       ],
     );
@@ -703,20 +738,27 @@ class _AnswerResultCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final accentColor = isCorrect ? AppColors.green : AppColors.red;
     return Card(
       margin: EdgeInsets.zero,
+      color: accentColor.withValues(alpha: 0.06),
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: BorderSide(color: accentColor.withValues(alpha: 0.35)),
+      ),
       child: Padding(
-        padding: const EdgeInsets.all(14),
+        padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Row(
               children: [
-                Icon(isCorrect ? Icons.check_circle : Icons.cancel),
+                Icon(isCorrect ? Icons.check_circle_rounded : Icons.cancel_rounded, color: accentColor),
                 const SizedBox(width: 8),
                 Text(
                   isCorrect ? '正解です' : '不正解です',
-                  style: Theme.of(context).textTheme.titleMedium,
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(color: accentColor, fontWeight: FontWeight.w800),
                 ),
               ],
             ),
