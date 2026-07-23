@@ -18,7 +18,10 @@ final learningResultsProvider = FutureProvider<LearningResults?>((ref) async {
   );
   final recentRows = await userDatabase.loadRecentAnswerHistory(
     qualificationCode: qualification.code,
-    limit: 20,
+    limit: 10,
+  );
+  final examHistory = await userDatabase.loadExamResultHistory(
+    qualificationCode: qualification.code,
   );
 
   final questionCodes = <String>{
@@ -47,7 +50,7 @@ final learningResultsProvider = FutureProvider<LearningResults?>((ref) async {
     final subjectName = _subjectName(question);
     final subject = subjectTotals.putIfAbsent(
       subjectName,
-      () => _MutableSubjectResult(),
+      _MutableSubjectResult.new,
     );
     subject.totalAnswers += answers;
     subject.correctAnswers += status.correctCount;
@@ -62,11 +65,7 @@ final learningResultsProvider = FutureProvider<LearningResults?>((ref) async {
         ),
       )
       .toList(growable: false)
-    ..sort((a, b) {
-      final totalCompare = b.totalAnswers.compareTo(a.totalAnswers);
-      if (totalCompare != 0) return totalCompare;
-      return a.subjectName.compareTo(b.subjectName);
-    });
+    ..sort((a, b) => a.subjectName.compareTo(b.subjectName));
 
   final recentAnswers = recentRows.map((row) {
     final question = questionMap[row.questionCode];
@@ -88,6 +87,7 @@ final learningResultsProvider = FutureProvider<LearningResults?>((ref) async {
         .length,
     subjects: subjects,
     recentAnswers: recentAnswers,
+    examHistory: examHistory,
   );
 });
 

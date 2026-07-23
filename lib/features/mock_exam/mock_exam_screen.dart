@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../database/questions_database.dart';
 import '../../database/user_database.dart';
+import '../../models/learning_results.dart';
 import '../../models/learning_session_progress.dart';
 import '../../models/qualification.dart';
 import '../../models/question.dart';
@@ -569,13 +570,39 @@ class _MockExamScreenState extends ConsumerState<MockExamScreen> {
         );
       }
 
+      final subjectTotals = <String, _ExamSubjectAccumulator>{};
+      for (var i = 0; i < questions.length; i++) {
+        final question = questions[i];
+        final subjectName = question.subjectName?.trim().isNotEmpty == true
+            ? question.subjectName!.trim()
+            : '科目未設定';
+        final subject = subjectTotals.putIfAbsent(
+          subjectName,
+          _ExamSubjectAccumulator.new,
+        );
+        subject.totalQuestions++;
+        final selected = _answers[i];
+        if (selected != null && question.isCorrectChoice(selected)) {
+          subject.correctQuestions++;
+        }
+      }
+      final completedAt = DateTime.now();
       await userDatabase.recordExamResult(
         qualificationCode: qualification.code,
-        startedAt: _startedAt ?? DateTime.now(),
-        completedAt: DateTime.now(),
+        startedAt: _startedAt ?? completedAt,
+        completedAt: completedAt,
         totalQuestions: questions.length,
         correctQuestions: correct,
         passingScorePercent: 70,
+        subjectResults: subjectTotals.entries
+            .map(
+              (entry) => ExamSubjectResultInput(
+                subjectName: entry.key,
+                totalQuestions: entry.value.totalQuestions,
+                correctQuestions: entry.value.correctQuestions,
+              ),
+            )
+            .toList(growable: false),
       );
       ref.invalidate(learningResultsProvider);
       await _clearOwnedProgress();
@@ -1620,4 +1647,10 @@ String _formatDuration(Duration duration) {
   final minutes = duration.inMinutes.remainder(60).toString().padLeft(2, '0');
   final seconds = duration.inSeconds.remainder(60).toString().padLeft(2, '0');
   return '$minutes:$seconds';
+}
+
+
+class _ExamSubjectAccumulator {
+  int totalQuestions = 0;
+  int correctQuestions = 0;
 }

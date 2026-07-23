@@ -160,7 +160,7 @@ class UserDatabase {
 
   Future<List<AnswerHistoryRecord>> loadRecentAnswerHistory({
     required String qualificationCode,
-    int limit = 20,
+    int limit = 10,
   }) async {
     final db = await _open();
     if (db == null) return const [];
@@ -179,6 +179,66 @@ class UserDatabase {
     }
   }
 
+  Future<List<ExamResultHistory>> loadExamResultHistory({
+    required String qualificationCode,
+    int limit = 20,
+  }) async {
+    final db = await _open();
+    if (db == null) return const [];
+    try {
+      final resultRows = await db.rawQuery(
+        '''
+        SELECT rowid AS result_row_id, completed_at, total_questions,
+               correct_questions
+        FROM exam_results
+        WHERE qualification_code = ?
+        ORDER BY completed_at DESC, rowid DESC
+        LIMIT ?
+        ''',
+        [qualificationCode, limit],
+      );
+      if (resultRows.isEmpty) return const [];
+
+      final ids = resultRows
+          .map((row) => _readIntValue(row['result_row_id']))
+          .toList(growable: false);
+      final placeholders = List.filled(ids.length, '?').join(',');
+      final subjectRows = await db.rawQuery(
+        '''
+        SELECT exam_result_id, subject_name, total_questions, correct_questions
+        FROM exam_result_subjects
+        WHERE exam_result_id IN ($placeholders)
+        ORDER BY exam_result_subject_id ASC
+        ''',
+        ids,
+      );
+
+      final subjectsByResult = <int, List<ExamSubjectHistory>>{};
+      for (final row in subjectRows) {
+        final resultId = _readIntValue(row['exam_result_id']);
+        subjectsByResult.putIfAbsent(resultId, () => []).add(
+              ExamSubjectHistory(
+                subjectName: row['subject_name']?.toString() ?? '科目未設定',
+                totalQuestions: _readIntValue(row['total_questions']),
+                correctQuestions: _readIntValue(row['correct_questions']),
+              ),
+            );
+      }
+
+      return resultRows.map((row) {
+        final resultId = _readIntValue(row['result_row_id']);
+        return ExamResultHistory(
+          completedAt: DateTime.tryParse(row['completed_at']?.toString() ?? ''),
+          totalQuestions: _readIntValue(row['total_questions']),
+          correctQuestions: _readIntValue(row['correct_questions']),
+          subjects: List.unmodifiable(subjectsByResult[resultId] ?? const []),
+        );
+      }).toList(growable: false);
+    } finally {
+      await db.close();
+    }
+  }
+
   Future<void> recordExamResult({
     required String qualificationCode,
     required DateTime startedAt,
@@ -186,6 +246,7 @@ class UserDatabase {
     required int totalQuestions,
     required int correctQuestions,
     required int passingScorePercent,
+    required List<ExamSubjectResultInput> subjectResults,
     String mockExamPatternCode = 'standard',
   }) async {
     final db = await _requireOpen();
@@ -193,15 +254,25 @@ class UserDatabase {
       final score = totalQuestions == 0
           ? 0.0
           : correctQuestions / totalQuestions * 100;
-      await db.insert('exam_results', {
-        'qualification_code': qualificationCode,
-        'mock_exam_pattern_code': mockExamPatternCode,
-        'started_at': startedAt.toIso8601String(),
-        'completed_at': completedAt.toIso8601String(),
-        'total_questions': totalQuestions,
-        'correct_questions': correctQuestions,
-        'score': score,
-        'is_passed': score >= passingScorePercent ? 1 : 0,
+      await db.transaction((txn) async {
+        final resultId = await txn.insert('exam_results', {
+          'qualification_code': qualificationCode,
+          'mock_exam_pattern_code': mockExamPatternCode,
+          'started_at': startedAt.toIso8601String(),
+          'completed_at': completedAt.toIso8601String(),
+          'total_questions': totalQuestions,
+          'correct_questions': correctQuestions,
+          'score': score,
+          'is_passed': score >= passingScorePercent ? 1 : 0,
+        });
+        for (final subject in subjectResults) {
+          await txn.insert('exam_result_subjects', {
+            'exam_result_id': resultId,
+            'subject_name': subject.subjectName,
+            'total_questions': subject.totalQuestions,
+            'correct_questions': subject.correctQuestions,
+          });
+        }
       });
     } finally {
       await db.close();
@@ -219,6 +290,20 @@ class UserDatabase {
           where: 'qualification_code = ?',
           whereArgs: [qualificationCode],
         );
+        final resultRows = await txn.rawQuery(
+          'SELECT rowid AS result_row_id FROM exam_results WHERE qualification_code = ?',
+          [qualificationCode],
+        );
+        final resultIds = resultRows
+            .map((row) => _readIntValue(row['result_row_id']))
+            .toList(growable: false);
+        if (resultIds.isNotEmpty) {
+          final placeholders = List.filled(resultIds.length, '?').join(',');
+          await txn.rawDelete(
+            'DELETE FROM exam_result_subjects WHERE exam_result_id IN ($placeholders)',
+            resultIds,
+          );
+        }
         await txn.delete(
           'exam_results',
           where: 'qualification_code = ?',
@@ -297,7 +382,26 @@ class UserDatabase {
       updatePolicy: DatabaseUpdatePolicy.preserveInstalled,
     );
     if (path == null) return null;
-    return openDatabase(path);
+    return openDatabase(
+      path,
+      onOpen: _ensureSchema,
+    );
+  }
+
+  Future<void> _ensureSchema(Database db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS exam_result_subjects (
+        exam_result_subject_id INTEGER PRIMARY KEY AUTOINCREMENT,
+        exam_result_id INTEGER NOT NULL,
+        subject_name TEXT NOT NULL,
+        total_questions INTEGER NOT NULL DEFAULT 0,
+        correct_questions INTEGER NOT NULL DEFAULT 0
+      )
+    ''');
+    await db.execute('''
+      CREATE INDEX IF NOT EXISTS idx_exam_result_subjects_result
+      ON exam_result_subjects(exam_result_id)
+    ''');
   }
 
   Future<Database> _requireOpen() async {
@@ -305,4 +409,11 @@ class UserDatabase {
     if (db == null) throw StateError('user.dbを開けませんでした。');
     return db;
   }
+}
+
+
+int _readIntValue(Object? value) {
+  if (value is int) return value;
+  if (value is num) return value.toInt();
+  return int.tryParse(value?.toString() ?? '') ?? 0;
 }

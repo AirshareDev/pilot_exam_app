@@ -6,6 +6,7 @@ class LearningResults {
     required this.answeredQuestions,
     required this.subjects,
     required this.recentAnswers,
+    required this.examHistory,
   });
 
   final String qualificationName;
@@ -14,6 +15,7 @@ class LearningResults {
   final int answeredQuestions;
   final List<SubjectLearningResult> subjects;
   final List<RecentAnswerResult> recentAnswers;
+  final List<ExamResultHistory> examHistory;
 
   int get wrongAnswers => totalAnswers - correctAnswers;
 
@@ -63,6 +65,50 @@ class RecentAnswerResult {
   final String subjectName;
   final bool isCorrect;
   final DateTime? answeredAt;
+}
+
+class ExamSubjectResultInput {
+  const ExamSubjectResultInput({
+    required this.subjectName,
+    required this.totalQuestions,
+    required this.correctQuestions,
+  });
+
+  final String subjectName;
+  final int totalQuestions;
+  final int correctQuestions;
+}
+
+class ExamResultHistory {
+  const ExamResultHistory({
+    required this.completedAt,
+    required this.totalQuestions,
+    required this.correctQuestions,
+    required this.subjects,
+  });
+
+  final DateTime? completedAt;
+  final int totalQuestions;
+  final int correctQuestions;
+  final List<ExamSubjectHistory> subjects;
+
+  int get wrongQuestions => totalQuestions - correctQuestions;
+  double get accuracy =>
+      totalQuestions == 0 ? 0 : correctQuestions / totalQuestions;
+}
+
+class ExamSubjectHistory {
+  const ExamSubjectHistory({
+    required this.subjectName,
+    required this.totalQuestions,
+    required this.correctQuestions,
+  });
+
+  final String subjectName;
+  final int totalQuestions;
+  final int correctQuestions;
+
+  int get wrongQuestions => totalQuestions - correctQuestions;
 }
 
 class UserQuestionAggregate {
